@@ -1,0 +1,26 @@
+name: discord-activity
+
+services:
+  discord-activity:
+    image: ghcr.io/nicolaeser/discord-activity:latest
+    pull_policy: always
+    ports:
+      - "8080:8080"
+    environment:
+      HEALTH_ADDR: ":8080"
+      LOG_LEVEL: info
+      SQLITE_PATH: /var/lib/discord-activity/data.sqlite
+      DASHBOARD_PASSWORD: changeme
+    volumes:
+      - discord-activity-data:/var/lib/discord-activity
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  discord-activity-data:

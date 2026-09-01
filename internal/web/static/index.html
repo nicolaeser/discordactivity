@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Activity</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --void: #05060a;
+      --ink: #ecf1ff;
+      --muted: #8b93b0;
+      --line: rgba(255,255,255,.08);
+      --glass: rgba(14,16,28,.72);
+      --blurple: #6d7cff;
+      --cyan: #3ee0ff;
+      --online: #3ee08a;
+      --idle: #ffc14a;
+      --dnd: #ff4d6d;
+      --stream: #c084fc;
+      --invis: #6b7288;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; color: var(--ink); font-family: Outfit, ui-sans-serif, system-ui, sans-serif; background: var(--void); }
+    body { overflow-x: hidden; }
+    button, input, select { font: inherit; }
+    .bg {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background:
+        radial-gradient(900px 500px at 12% -10%, rgba(109,124,255,.28), transparent 55%),
+        radial-gradient(700px 420px at 110% 8%, rgba(62,224,255,.16), transparent 50%),
+        radial-gradient(600px 400px at 50% 120%, rgba(192,132,252,.12), transparent 50%);
+    }
+    .bg::after {
+      content: ""; position: absolute; inset: 0; opacity: .35;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='4' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='.55'/></svg>");
+      mix-blend-mode: overlay;
+    }
+    .wrap { position: relative; z-index: 1; max-width: 1120px; margin: 0 auto; padding: 28px 20px 80px; }
+    .hidden { display: none !important; }
+    .login {
+      position: relative; z-index: 1; min-height: 100vh; display: grid; place-items: center; padding: 24px;
+    }
+    .panel {
+      width: min(420px, 100%);
+      background: var(--glass);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: 32px 28px;
+      backdrop-filter: blur(22px);
+      box-shadow: 0 30px 80px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.08);
+    }
+    .mark { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; }
+    .orb {
+      width: 42px; height: 42px; border-radius: 14px; position: relative;
+      background: linear-gradient(135deg, var(--blurple), var(--cyan));
+      box-shadow: 0 0 32px rgba(109,124,255,.45);
+    }
+    .orb::after {
+      content: ""; position: absolute; inset: 8px; border-radius: 8px;
+      border: 2px solid rgba(5,6,10,.55);
+    }
+    .mark h1 { margin: 0; font-size: 22px; letter-spacing: .18em; text-transform: uppercase; }
+    .mark p { margin: 2px 0 0; color: var(--muted); font-size: 13px; letter-spacing: .04em; }
+    .field { display: flex; flex-direction: column; gap: 8px; margin: 14px 0; }
+    .field span { color: var(--muted); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
+    input, select {
+      width: 100%; color: var(--ink); background: rgba(5,6,10,.55);
+      border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; outline: none;
+    }
+    input:focus, select:focus { border-color: rgba(109,124,255,.8); box-shadow: 0 0 0 4px rgba(109,124,255,.15); }
+    .btn {
+      border: 0; border-radius: 12px; padding: 10px 14px; cursor: pointer;
+      background: rgba(255,255,255,.06); color: var(--ink); transition: transform .15s ease, filter .15s ease, background .15s ease;
+    }
+    .btn:hover { filter: brightness(1.08); transform: translateY(-1px); }
+    .btn.primary {
+      background: linear-gradient(135deg, var(--blurple), #4f46e5);
+      box-shadow: 0 8px 24px rgba(109,124,255,.28);
+    }
+    .btn.danger { background: rgba(255,77,109,.16); color: #ff8da3; }
+    .btn.ghost { background: transparent; border: 1px solid var(--line); }
+    .err { color: #ff8da3; font-size: 13px; min-height: 1.2em; }
+    header.top { display: flex; justify-content: space-between; gap: 16px; align-items: flex-end; margin-bottom: 28px; }
+    header.top h1 { margin: 0; font-size: 28px; letter-spacing: -.03em; }
+    header.top p { margin: 4px 0 0; color: var(--muted); }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+    .card {
+      position: relative; overflow: hidden;
+      background: var(--glass); border: 1px solid var(--line); border-radius: 22px;
+      padding: 18px 18px 16px; backdrop-filter: blur(18px);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
+    }
+    .card::before {
+      content: ""; position: absolute; inset: 0 auto 0 0; width: 3px;
+      background: var(--invis);
+    }
+    .card.online::before { background: var(--online); }
+    .card.idle::before { background: var(--idle); }
+    .card.dnd::before { background: var(--dnd); }
+    .card.streaming::before, .card.online.stream::before { background: var(--stream); }
+    .pulse {
+      width: 11px; height: 11px; border-radius: 50%; background: var(--invis); position: relative;
+    }
+    .pulse.on { background: var(--online); box-shadow: 0 0 0 0 rgba(62,224,138,.7); animation: ping 1.8s infinite; }
+    .pulse.idle { background: var(--idle); }
+    .pulse.dnd { background: var(--dnd); }
+    .pulse.streaming { background: var(--stream); }
+    @keyframes ping {
+      0% { box-shadow: 0 0 0 0 rgba(62,224,138,.55); }
+      70% { box-shadow: 0 0 0 10px rgba(62,224,138,0); }
+      100% { box-shadow: 0 0 0 0 rgba(62,224,138,0); }
+    }
+    .card h3 { margin: 0; font-size: 18px; }
+    .activity { margin: 10px 0 4px; font-size: 20px; letter-spacing: -.03em; }
+    .mono { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 12px; color: var(--muted); }
+    .pill {
+      font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
+      padding: 4px 8px; border-radius: 999px; background: rgba(255,255,255,.06); color: var(--muted);
+    }
+    .pill.live { color: #9fffd0; background: rgba(62,224,138,.12); }
+    .pill.off { color: #ff8da3; background: rgba(255,77,109,.12); }
+    .empty {
+      border: 1px dashed var(--line); border-radius: 22px; padding: 48px 24px; text-align: center; color: var(--muted);
+      background: rgba(255,255,255,.02);
+    }
+    dialog {
+      border: 1px solid var(--line); border-radius: 22px; background: #0c0e18; color: var(--ink);
+      width: min(740px, calc(100% - 24px)); padding: 0;
+      box-shadow: 0 40px 100px rgba(0,0,0,.6);
+    }
+    dialog::backdrop { background: rgba(2,3,8,.72); backdrop-filter: blur(8px); }
+    .modal { padding: 22px; }
+    .modal h2 { margin: 0 0 16px; font-size: 20px; }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .wide { grid-column: 1 / -1; }
+    @media (max-width: 720px) { .form-grid { grid-template-columns: 1fr; } header.top { flex-direction: column; align-items: flex-start; } }
+  </style>
+</head>
+<body>
+  <div class="bg"></div>
+  <div id="login" class="login hidden">
+    <form class="panel" id="login-form">
+      <div class="mark">
+        <div class="orb"></div>
+        <div>
+          <h1>Activity</h1>
+          <p>Presence host</p>
+        </div>
+      </div>
+      <label class="field">
+        <span>Dashboard password</span>
+        <input id="password" type="password" autocomplete="current-password" required>
+      </label>
+      <p id="login-error" class="err"></p>
+      <button class="btn primary" type="submit" style="width:100%;margin-top:8px">Enter</button>
+    </form>
+  </div>
+
+  <div id="app" class="wrap hidden">
+    <header class="top">
+      <div class="mark" style="margin:0">
+        <div class="orb"></div>
+        <div>
+          <h1>Live presence</h1>
+          <p>Tokens, status and hosted activities</p>
+        </div>
+      </div>
+      <div class="row">
+        <button class="btn primary" id="add-btn" type="button">Add account</button>
+        <button class="btn ghost" id="logout-btn" type="button">Log out</button>
+      </div>
+    </header>
+    <div id="list" class="grid"></div>
+  </div>
+
+  <dialog id="editor">
+    <form class="modal" id="editor-form">
+      <h2 id="editor-title">Account</h2>
+      <div class="form-grid">
+        <label class="field"><span>Name</span><input name="name" placeholder="main"></label>
+        <label class="field"><span>Enabled</span>
+          <select name="enabled"><option value="true">Yes</option><option value="false">No</option></select>
+        </label>
+        <label class="field wide"><span>Token</span><input name="token" placeholder="leave empty to keep current" autocomplete="off"></label>
+        <label class="field"><span>Status</span>
+          <select name="status">
+            <option>online</option><option>idle</option><option>dnd</option><option>invisible</option><option>streaming</option>
+          </select>
+        </label>
+        <label class="field"><span>Activity type</span>
+          <select name="activity_type">
+            <option value="">status only</option>
+            <option>playing</option><option>streaming</option><option>listening</option>
+            <option>watching</option><option>custom</option><option>competing</option>
+          </select>
+        </label>
+        <label class="field"><span>Activity name</span><input name="activity_name" placeholder="Visual Studio Code"></label>
+        <label class="field"><span>Stream URL</span><input name="url" placeholder="https://twitch.tv/..."></label>
+        <label class="field wide"><span>Details</span><input name="details"></label>
+        <label class="field wide"><span>State</span><input name="state"></label>
+        <label class="field"><span>Application ID</span><input name="application_id"></label>
+        <label class="field"><span>Start</span><input name="start" placeholder="now"></label>
+        <label class="field"><span>Large image</span><input name="large_image"></label>
+        <label class="field"><span>Large text</span><input name="large_text"></label>
+        <label class="field"><span>Small image</span><input name="small_image"></label>
+        <label class="field"><span>Small text</span><input name="small_text"></label>
+        <label class="field"><span>Emoji</span><input name="emoji" placeholder="🔥"></label>
+        <label class="field"><span>Button 1</span><input name="button_1_label" placeholder="label"></label>
+        <label class="field wide"><span>Button 1 URL</span><input name="button_1_url"></label>
+        <label class="field"><span>Button 2</span><input name="button_2_label" placeholder="label"></label>
+        <label class="field wide"><span>Button 2 URL</span><input name="button_2_url"></label>
+      </div>
+      <p id="editor-error" class="err"></p>
+      <div class="row" style="justify-content:flex-end;margin-top:8px">
+        <button class="btn ghost" type="button" id="cancel-btn">Cancel</button>
+        <button class="btn primary" type="submit">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script>
+    const loginEl = document.getElementById("login");
+    const appEl = document.getElementById("app");
+    const listEl = document.getElementById("list");
+    const editor = document.getElementById("editor");
+    const form = document.getElementById("editor-form");
+    let editingId = null;
+    const keys = ["name","enabled","token","status","activity_type","activity_name","url","details","state","application_id","start","large_image","large_text","small_image","small_text","emoji","button_1_label","button_1_url","button_2_label","button_2_url"];
+
+    async function api(path, opts) {
+      const res = await fetch(path, Object.assign({ headers: { "Content-Type": "application/json" }, credentials: "same-origin" }, opts || {}));
+      if (res.status === 401) throw Object.assign(new Error("unauthorized"), { status: 401 });
+      const text = await res.text();
+      const data = text ? JSON.parse(text) : {};
+      if (!res.ok) throw new Error(data.error || res.statusText);
+      return data;
+    }
+    function showLogin(err) { appEl.classList.add("hidden"); loginEl.classList.remove("hidden"); document.getElementById("login-error").textContent = err || ""; }
+    function showApp() { loginEl.classList.add("hidden"); appEl.classList.remove("hidden"); }
+    function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[c])); }
+
+    function fill(acc) {
+      const f = form.elements;
+      keys.forEach(k => {
+        if (!f[k]) return;
+        if (k === "enabled") f[k].value = acc.enabled ? "true" : "false";
+        else if (k === "token") { f[k].value = ""; f[k].placeholder = acc.token_hint ? "current " + acc.token_hint : "discord token"; }
+        else f[k].value = acc[k] || "";
+      });
+    }
+    function readForm() {
+      const f = form.elements, out = {};
+      keys.forEach(k => { out[k] = k === "enabled" ? f[k].value === "true" : (f[k] ? f[k].value : ""); });
+      out.token = out.token.trim();
+      return out;
+    }
+    function render(accounts) {
+      if (!accounts.length) {
+        listEl.className = "";
+        listEl.innerHTML = '<div class="empty">No accounts yet. Add a token and host a status.</div>';
+        return;
+      }
+      listEl.className = "grid";
+      listEl.innerHTML = accounts.map(a => {
+        const rt = a.runtime || {};
+        const status = rt.status || a.status || "invisible";
+        const activity = rt.activity || (a.activity_name ? a.activity_type + " " + a.activity_name : "No activity");
+        const live = a.enabled && rt.connected;
+        return `<article class="card ${status}">
+          <div class="row" style="justify-content:space-between">
+            <div class="row"><span class="pulse ${live ? "on" : status}"></span><h3>${esc(a.name || "account " + a.id)}</h3></div>
+            <span class="pill ${a.enabled ? (live ? "live" : "") : "off"}">${a.enabled ? (live ? "live" : "offline") : "disabled"}</span>
+          </div>
+          <div class="activity">${esc(activity)}</div>
+          <div class="mono">${esc(rt.user || "waiting")} · ${esc(status)} · ${esc(a.token_hint || "")}</div>
+          ${rt.last_error ? `<div class="err">${esc(rt.last_error)}</div>` : ""}
+          <div class="row" style="margin-top:12px">
+            <button class="btn" data-edit="${a.id}">Edit</button>
+            <button class="btn" data-restart="${a.id}">Reconnect</button>
+            <button class="btn danger" data-del="${a.id}">Delete</button>
+          </div>
+        </article>`;
+      }).join("");
+    }
+    async function refresh() { render((await api("/api/accounts")).accounts || []); }
+
+    document.getElementById("login-form").addEventListener("submit", async e => {
+      e.preventDefault();
+      document.getElementById("login-error").textContent = "";
+      try {
+        await api("/login", { method: "POST", body: JSON.stringify({ password: document.getElementById("password").value }) });
+        showApp(); await refresh();
+      } catch (err) { document.getElementById("login-error").textContent = err.message; }
+    });
+    document.getElementById("logout-btn").addEventListener("click", async () => { await api("/logout", { method: "POST", body: "{}" }); showLogin(""); });
+    document.getElementById("add-btn").addEventListener("click", () => {
+      editingId = null; document.getElementById("editor-title").textContent = "Add account";
+      document.getElementById("editor-error").textContent = ""; fill({ enabled: true, status: "online" }); editor.showModal();
+    });
+    document.getElementById("cancel-btn").addEventListener("click", () => editor.close());
+    listEl.addEventListener("click", async e => {
+      const btn = e.target.closest("button"); if (!btn) return;
+      try {
+        if (btn.dataset.edit) {
+          const data = await api("/api/accounts/" + btn.dataset.edit);
+          editingId = data.account.id; document.getElementById("editor-title").textContent = "Edit account";
+          document.getElementById("editor-error").textContent = ""; fill(data.account); editor.showModal();
+        } else if (btn.dataset.restart) {
+          await api("/api/accounts/" + btn.dataset.restart + "/reconnect", { method: "POST", body: "{}" }); await refresh();
+        } else if (btn.dataset.del) {
+          if (!confirm("Delete this account?")) return;
+          await api("/api/accounts/" + btn.dataset.del, { method: "DELETE" }); await refresh();
+        }
+      } catch (err) { alert(err.message); }
+    });
+    form.addEventListener("submit", async e => {
+      e.preventDefault(); document.getElementById("editor-error").textContent = "";
+      const body = readForm();
+      try {
+        if (editingId) await api("/api/accounts/" + editingId, { method: "PUT", body: JSON.stringify(body) });
+        else await api("/api/accounts", { method: "POST", body: JSON.stringify(body) });
+        editor.close(); await refresh();
+      } catch (err) { document.getElementById("editor-error").textContent = err.message; }
+    });
+    (async () => { try { await refresh(); showApp(); } catch (err) { showLogin(err.status === 401 ? "" : err.message); } })();
+  </script>
+</body>
+</html>

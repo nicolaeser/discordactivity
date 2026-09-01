@@ -1,0 +1,12 @@
+.git
+.github
+.gitignore
+.DS_Store
+docker-compose.yml
+docker-compose.dev.yml
+*.md
+/bin/
+/discord-activity
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
