@@ -1,0 +1,16 @@
+services:
+  discordactivity:
+    image: ghcr.io/nicolaeser/discordactivity:latest
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: 8080
+      LOG_LEVEL: info
+      SQLITE_PATH: /var/lib/discordactivity/data.sqlite
+      DASHBOARD_PASSWORD: changeme
+    volumes:
+      - discordactivity-data:/var/lib/discordactivity
+    restart: unless-stopped
+
+volumes:
+  discordactivity-data:

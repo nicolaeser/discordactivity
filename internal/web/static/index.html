@@ -1,0 +1,957 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DiscordActivity</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --font: "gg sans", "Noto Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+      --bg-primary: #313338;
+      --bg-secondary: #2b2d31;
+      --bg-tertiary: #1e1f22;
+      --bg-floating: #111214;
+      --bg-mod-hover: rgba(79, 84, 92, .3);
+      --bg-mod-active: rgba(79, 84, 92, .48);
+      --bg-mod-selected: rgba(79, 84, 92, .6);
+      --input-bg: #1e1f22;
+      --header-primary: #f2f3f5;
+      --header-secondary: #b5bac1;
+      --text-normal: #dbdee1;
+      --text-muted: #949ba4;
+      --text-link: #00a8fc;
+      --brand: #5865f2;
+      --brand-hover: #4752c4;
+      --brand-active: #3c45a5;
+      --online: #23a55a;
+      --idle: #f0b232;
+      --dnd: #f23f43;
+      --invisible: #80848e;
+      --streaming: #593695;
+      --danger: #da373c;
+      --danger-hover: #a12828;
+      --positive: #248046;
+      --btn-secondary: #4e5058;
+      --btn-secondary-hover: #6d6f78;
+      --divider: rgba(255,255,255,.08);
+      --radius: 8px;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; height: 100%; }
+    body {
+      font-family: var(--font);
+      color: var(--text-normal);
+      background: var(--bg-tertiary);
+      overflow: hidden;
+    }
+    button, input, select, textarea { font: inherit; color: inherit; line-height: 1; }
+    button { cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+    .hidden { display: none !important; }
+    .scene {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background:
+        radial-gradient(1100px 640px at 8% 10%, #3b4cc0 0%, transparent 55%),
+        radial-gradient(900px 520px at 92% 8%, #1a6b8a 0%, transparent 50%),
+        radial-gradient(700px 480px at 70% 90%, #5865f2 0%, transparent 48%),
+        linear-gradient(160deg, #1a1c3a, #111214);
+    }
+    .login {
+      position: relative; isolation: isolate; z-index: 1; min-height: 100vh;
+      display: grid; place-items: center; padding: 24px;
+    }
+    .wordmark {
+      position: absolute; top: 36px; left: 36px; z-index: 2;
+      display: flex; align-items: center; gap: 10px; color: #fff; text-decoration: none;
+    }
+    .wordmark svg { display: block; }
+    .wordmark span { font-size: 20px; font-weight: 700; letter-spacing: -.02em; }
+    .auth {
+      position: relative; z-index: 2;
+      width: min(784px, 100%);
+      background: var(--bg-primary);
+      border-radius: 8px;
+      padding: 32px;
+      display: flex; gap: 32px; align-items: center;
+      box-shadow: 0 2px 10px rgba(0,0,0,.2);
+    }
+    .auth-form { flex: 1; min-width: 0; }
+    .auth-form h1 { margin: 0; text-align: center; font-size: 24px; font-weight: 600; color: var(--header-primary); }
+    .auth-form p.sub { margin: 8px 0 20px; text-align: center; color: var(--header-secondary); }
+    .field { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+    .field span, .field label { font-size: 12px; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; color: var(--header-secondary); }
+    .req { color: var(--dnd); padding-left: 4px; }
+    input, select, textarea {
+      width: 100%; height: 40px; padding: 10px;
+      border: 1px solid rgba(255,255,255,.08); border-radius: 8px;
+      background: rgba(0,0,0,.2); outline: none;
+    }
+    textarea { height: auto; min-height: 64px; resize: vertical; }
+    input:focus, select:focus, textarea:focus { border-color: var(--text-link); }
+    .cta {
+      width: 100%; height: 40px; margin: 0; padding: 0 16px; border: 0; border-radius: 8px;
+      background: var(--brand); color: #fff; font-weight: 500;
+    }
+    .auth-form .cta { margin-top: 8px; }
+    .cta:hover { background: var(--brand-hover); }
+    .err { min-height: 1.2em; color: #f23f43; font-size: 13px; }
+    .auth-side { width: 240px; text-align: center; flex: none; }
+    .auth-side h2 { margin: 0 0 8px; font-size: 20px; color: var(--header-primary); }
+    .auth-side p { margin: 0; color: var(--text-muted); font-size: 14px; line-height: 20px; }
+
+    .app { display: grid; grid-template-rows: 48px 1fr; height: 100vh; position: relative; z-index: 1; }
+    .titlebar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 12px 0 16px; background: var(--bg-tertiary); border-bottom: 1px solid rgba(0,0,0,.3);
+    }
+    .titlebar h1 { margin: 0; font-size: 16px; font-weight: 600; color: var(--header-primary); display: flex; align-items: center; gap: 10px; }
+    .titlebar .row { display: flex; gap: 8px; }
+    .shell {
+      display: grid; grid-template-columns: 260px minmax(0, 1fr) 360px;
+      min-height: 0;
+    }
+    .rail {
+      background: var(--bg-secondary); padding: 12px 8px; display: flex; flex-direction: column; min-height: 0;
+    }
+    .rail-head {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 4px 10px 10px; color: var(--text-muted);
+      font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+    }
+    .account-list { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 2px; }
+    .account {
+      display: grid; grid-template-columns: 40px 1fr; gap: 10px; align-items: center;
+      width: 100%; border: 0; background: transparent; text-align: left;
+      padding: 6px 8px; border-radius: 8px; color: var(--header-secondary);
+    }
+    .account:hover { background: var(--bg-mod-hover); color: var(--header-primary); }
+    .account[aria-current="true"] { background: var(--bg-mod-selected); color: #fff; }
+    .avatar {
+      position: relative; width: 32px; height: 32px; border-radius: 50%;
+      display: grid; place-items: center; font-weight: 700; color: #fff; font-size: 13px;
+      background: #5865f2;
+    }
+    .avatar .pip {
+      position: absolute; right: -2px; bottom: -2px; width: 12px; height: 12px; border-radius: 50%;
+      background: var(--invisible); box-shadow: 0 0 0 3px var(--bg-secondary);
+    }
+    .avatar .pip.online { background: var(--online); }
+    .avatar .pip.idle { background: var(--idle); }
+    .avatar .pip.idle::after {
+      content: ""; position: absolute; width: 7px; height: 7px; border-radius: 50%;
+      background: var(--bg-secondary); top: -1px; left: -1px;
+    }
+    .avatar .pip.dnd { background: var(--dnd); }
+    .avatar .pip.dnd::after {
+      content: ""; position: absolute; left: 2px; right: 2px; top: 5px; height: 2px; border-radius: 1px;
+      background: var(--bg-secondary);
+    }
+    .avatar .pip.invisible { background: var(--invisible); }
+    .avatar .pip.invisible::after {
+      content: ""; position: absolute; inset: 3px; border-radius: 50%; background: var(--bg-secondary);
+    }
+    .avatar .pip.streaming { background: var(--streaming); }
+    .meta { min-width: 0; }
+    .meta .name { display: block; font-weight: 600; font-size: 14px; color: var(--header-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .meta .sub { display: block; font-size: 12px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .add-account {
+      display: flex; align-items: center; gap: 10px; margin-top: 8px;
+      border: 0; background: transparent; color: var(--text-muted); padding: 6px 8px; border-radius: 8px; text-align: left;
+    }
+    .add-account:hover { background: var(--bg-mod-hover); color: var(--header-primary); }
+    .plus {
+      width: 32px; height: 32px; border-radius: 50%; border: 1.5px dashed #3f4147; position: relative;
+    }
+    .plus::before, .plus::after { content: ""; position: absolute; left: 50%; top: 50%; background: currentColor; border-radius: 1px; }
+    .plus::before { width: 12px; height: 2px; transform: translate(-50%, -50%); }
+    .plus::after { width: 2px; height: 12px; transform: translate(-50%, -50%); }
+
+    .studio { background: var(--bg-primary); overflow: auto; overflow-x: hidden; padding: 16px 20px 72px; min-width: 0; }
+    .studio-empty {
+      height: 100%; display: grid; place-items: center; text-align: center; color: var(--text-muted); padding: 40px;
+    }
+    .studio-empty h2 { margin: 12px 0 8px; color: var(--header-primary); }
+    .studio-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; margin-bottom: 16px; }
+    .studio-head h2 { margin: 0; font-size: 20px; color: var(--header-primary); }
+    .host-pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 12px; font-weight: 600; padding: 4px 8px; border-radius: 999px;
+      background: var(--bg-secondary); color: var(--text-muted);
+    }
+    .host-pill.live { color: #3ba55d; background: rgba(35,165,90,.12); }
+    .host-pill.error { color: #f23f43; background: rgba(242,63,67,.12); }
+    .host-pill.connecting { color: var(--idle); background: rgba(240,178,50,.12); }
+    .controls { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin: 12px 0 20px; }
+    .ctrl {
+      height: 40px; border: 0; border-radius: 4px; font-weight: 500; gap: 8px;
+    }
+    .ctrl.start { background: var(--brand); color: #fff; }
+    .ctrl.start:hover:not(:disabled) { background: var(--brand-hover); }
+    .ctrl.stop { background: var(--danger); color: #fff; }
+    .ctrl.stop:hover:not(:disabled) { background: var(--danger-hover); }
+    .ctrl.reconnect { background: var(--btn-secondary); color: #fff; }
+    .ctrl.reconnect:hover:not(:disabled) { background: var(--btn-secondary-hover); }
+    .ctrl:disabled { opacity: .4; cursor: not-allowed; }
+    .spin {
+      width: 14px; height: 14px; border-radius: 50%;
+      border: 2px solid rgba(255,255,255,.28); border-top-color: #fff; animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .group { margin-bottom: 22px; padding-bottom: 18px; border-bottom: 1px solid var(--divider); }
+    .group h3 { margin: 0 0 4px; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; color: var(--header-primary); }
+    .group .hint { margin: 0 0 12px; font-size: 13px; color: var(--text-muted); }
+    .status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .status-opt {
+      display: flex; align-items: center; gap: 10px; text-align: left;
+      border: 1px solid transparent; background: var(--bg-secondary); border-radius: 8px; padding: 10px 12px; color: var(--header-primary);
+    }
+    .status-opt:hover { background: var(--bg-mod-hover); }
+    .status-opt[aria-checked="true"] { border-color: color-mix(in srgb, var(--tone) 70%, transparent); background: color-mix(in srgb, var(--tone) 14%, var(--bg-secondary)); }
+    .status-opt .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--tone); flex: none; position: relative; }
+    .status-opt .copy { display: flex; flex-direction: column; }
+    .status-opt .copy b { font-size: 14px; font-weight: 600; }
+    .status-opt .copy small { font-size: 12px; color: var(--text-muted); }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip {
+      height: 32px; border: 0; border-radius: 999px; padding: 0 12px; background: var(--bg-secondary); color: var(--header-secondary); font-weight: 500; font-size: 13px;
+    }
+    .chip[aria-checked="true"] { background: var(--brand); color: #fff; }
+    .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .save-pill { font-size: 12px; color: var(--text-muted); min-height: 1.2em; }
+    .save-pill.saved { color: var(--online); }
+    .save-pill.error { color: var(--dnd); }
+    .unsaved {
+      position: sticky; bottom: 8px; z-index: 6;
+      display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+      background: #111214; border-radius: 8px; padding: 10px 16px;
+      box-shadow: 0 8px 16px rgba(0,0,0,.4);
+      color: var(--header-primary); font-weight: 500;
+    }
+    .unsaved-actions { display: flex; align-items: center; gap: 8px; }
+    .save-changes {
+      height: 32px; border: 0; border-radius: 4px; padding: 0 16px;
+      background: #248046; color: #fff; font-weight: 500;
+    }
+    .save-changes:hover { background: #1a6334; }
+
+    .preview-col {
+      background: var(--bg-secondary); padding: 20px 16px; overflow: auto; overflow-x: hidden;
+      display: flex; flex-direction: column; align-items: center; gap: 16px; min-width: 0;
+    }
+    .preview-col h3 { align-self: stretch; margin: 0 8px 4px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); }
+    .popout {
+      width: 100%; max-width: 340px; padding: 4px; border-radius: 8px; background: #232428;
+      box-shadow: 0 8px 16px rgba(0,0,0,.24); overflow-x: hidden;
+    }
+    .popout-inner { position: relative; border-radius: 4px; overflow: hidden; background: #232428; max-width: 100%; }
+    .banner { height: 60px; background: var(--brand); }
+    .av-wrap {
+      position: absolute; left: 16px; top: 16px; width: 80px; height: 80px;
+      padding: 6px; border-radius: 50%; background: var(--bg-floating); box-sizing: content-box;
+    }
+    .av-face {
+      width: 80px; height: 80px; border-radius: 50%; overflow: hidden;
+      display: grid; place-items: center; font-size: 32px; font-weight: 700; color: #fff; background: var(--brand);
+      mask: radial-gradient(circle 10px at 68px 68px, transparent 99%, #000 100%);
+    }
+    .av-face img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .avatar img, .avatar-img { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; display: block; }
+    .av-status {
+      position: absolute; width: 16px; height: 16px; right: 6px; bottom: 6px; border-radius: 50%; background: var(--online);
+    }
+    .popout[data-status="idle"] .av-status { background: var(--idle); }
+    .popout[data-status="dnd"] .av-status { background: var(--dnd); }
+    .popout[data-status="invisible"] .av-status { background: var(--invisible); }
+    .popout[data-status="streaming"] .av-status { background: var(--streaming); }
+    .av-status::after { content: ""; position: absolute; inset: 0; border-radius: 50%; }
+    .popout[data-status="idle"] .av-status::after {
+      inset: auto; width: 10px; height: 10px; border-radius: 50%; background: var(--bg-floating); top: -2px; left: -2px;
+    }
+    .popout[data-status="dnd"] .av-status::after {
+      inset: auto; width: 8px; height: 2px; border-radius: 1px; background: var(--bg-floating); top: 7px; left: 4px;
+    }
+    .popout[data-status="invisible"] .av-status::after { inset: 4px; background: var(--bg-floating); }
+    .overlay { margin: 64px 16px 16px; padding: 12px; border-radius: 8px; background: var(--bg-floating); }
+    .display { font-size: 20px; line-height: 24px; font-weight: 700; color: var(--header-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .handle { margin-top: 2px; font-size: 14px; color: var(--header-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mobile-tag { margin-top: 4px; font-size: 12px; font-weight: 600; color: var(--header-secondary); }
+    .custom { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+    .divider { border: 0; height: 1px; margin: 12px 0 0; background: var(--divider); }
+    .sec-label { margin: 12px 0 8px; font-size: 12px; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; color: var(--header-primary); }
+    .act { display: flex; gap: 10px; align-items: center; }
+    .art { position: relative; width: 60px; height: 60px; flex: none; }
+    .art-lg { width: 60px; height: 60px; border-radius: 8px; background: var(--brand) center/cover no-repeat; }
+    .art-sm {
+      position: absolute; width: 20px; height: 20px; right: -4px; bottom: -4px; border-radius: 50%;
+      border: 2px solid var(--bg-floating); background: var(--online) center/cover no-repeat;
+    }
+    .act-text { min-width: 0; }
+    .act-name { font-weight: 600; color: var(--header-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .act-line { font-size: 13px; line-height: 16px; color: var(--header-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .act-btns { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+    .act-btn {
+      height: 32px; border: 0; border-radius: 3px; background: var(--btn-secondary); color: #fff; font-weight: 500;
+    }
+    .ghost {
+      height: 32px; border: 0; border-radius: 4px; background: var(--btn-secondary); color: #fff; padding: 0 16px; font-weight: 500;
+    }
+    .ghost:hover { background: var(--btn-secondary-hover); }
+    .danger-btn { height: 32px; background: transparent; color: #f23f43; border: 0; padding: 0 8px; font-weight: 500; }
+    .toasts {
+      position: fixed; z-index: 50; left: 50%; bottom: 24px; transform: translateX(-50%);
+      display: flex; flex-direction: column; gap: 8px; width: min(420px, calc(100% - 24px)); pointer-events: none;
+    }
+    .toast {
+      pointer-events: auto; display: flex; gap: 12px; align-items: flex-start;
+      padding: 12px; border-radius: 8px; background: #111214; border: 1px solid var(--divider);
+      box-shadow: 0 8px 24px rgba(0,0,0,.45);
+    }
+    .toast .icon { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; flex: none; }
+    .toast.error .icon { background: #ed4245; }
+    .toast.success .icon { background: #3ba55d; }
+    .toast.info .icon { background: var(--brand); }
+    .toast strong { display: block; font-size: 14px; }
+    .toast p { margin: 2px 0 0; color: var(--text-muted); font-size: 13px; }
+    dialog {
+      border: 0; border-radius: 8px; background: var(--bg-primary); color: var(--text-normal);
+      width: min(440px, calc(100% - 24px)); padding: 16px; box-shadow: 0 8px 16px rgba(0,0,0,.24);
+    }
+    dialog.wide { width: min(720px, calc(100% - 24px)); }
+    dialog::backdrop { background: rgba(0,0,0,.7); }
+    .dlg h2 { margin: 0 0 12px; }
+    .dlg-actions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin-top: 16px; }
+    .dlg-actions .cta,
+    .dlg-actions .ghost {
+      height: 32px;
+      width: auto;
+      margin: 0;
+      padding: 0 16px;
+      border-radius: 4px;
+    }
+    pre.snippet {
+      background: #07080a; border: 1px solid var(--divider); border-radius: 8px; padding: 12px;
+      overflow: auto; font-size: 12px; line-height: 1.5; color: #d7def8;
+    }
+    @media (max-width: 1099px) {
+      .shell { grid-template-columns: 1fr 320px; grid-template-rows: auto 1fr; }
+      .rail { grid-column: 1 / -1; max-height: 120px; }
+      .account-list { flex-direction: row; overflow-x: auto; }
+      .account { min-width: 180px; }
+    }
+    @media (max-width: 720px) {
+      .shell { grid-template-columns: 1fr; }
+      .preview-col, .studio, .rail { grid-column: 1; }
+      .auth { flex-direction: column; }
+      .auth-side { width: 100%; }
+      .row2, .status-grid, .controls { grid-template-columns: 1fr; }
+      body { overflow: auto; }
+      .app { height: auto; min-height: 100vh; }
+    }
+  </style>
+</head>
+<body>
+  <div id="login" class="login">
+    <div class="scene"></div>
+    <a class="wordmark" href="#">
+      <svg width="36" height="36" viewBox="0 0 36 36" fill="none" aria-hidden="true">
+        <rect width="36" height="36" rx="10" fill="#5865F2"/>
+        <path d="M10 13.5c0-1.4 1.1-2.5 2.5-2.5h11c1.4 0 2.5 1.1 2.5 2.5v7c0 1.4-1.1 2.5-2.5 2.5h-3.2L16 24.8v-2.3H12.5A2.5 2.5 0 0 1 10 20.5v-7Z" fill="#fff"/>
+        <circle cx="15.2" cy="17" r="1.35" fill="#5865F2"/>
+        <circle cx="20.8" cy="17" r="1.35" fill="#5865F2"/>
+      </svg>
+      <span>DiscordActivity</span>
+    </a>
+    <section class="auth">
+      <form class="auth-form" id="login-form">
+        <h1>Welcome back!</h1>
+        <p class="sub">We're so excited to see you again!</p>
+        <label class="field">
+          <span>Dashboard / API key <span class="req">*</span></span>
+          <input id="password" type="password" autocomplete="current-password" required>
+        </label>
+        <p id="login-error" class="err"></p>
+        <button class="cta" type="submit">Log In</button>
+      </form>
+      <aside class="auth-side">
+        <h2>Host presence</h2>
+        <p>The dashboard password is also the API key. Use it as a Bearer token for Start, Stop, and Reconnect.</p>
+      </aside>
+    </section>
+  </div>
+
+  <div id="app" class="app hidden">
+    <header class="titlebar">
+      <h1>
+        <svg width="22" height="22" viewBox="0 0 36 36" aria-hidden="true"><rect width="36" height="36" rx="10" fill="#5865F2"/></svg>
+        DiscordActivity
+      </h1>
+      <div class="row">
+        <button class="ghost" type="button" id="api-btn">API</button>
+        <button class="ghost" type="button" id="logout-btn">Log out</button>
+      </div>
+    </header>
+    <div class="shell">
+      <aside class="rail">
+        <div class="rail-head"><span>Accounts</span><span id="account-count">0</span></div>
+        <div id="list" class="account-list"></div>
+        <button class="add-account" type="button" id="add-btn"><span class="plus"></span><span>Add account</span></button>
+      </aside>
+      <main class="studio">
+        <div id="empty-studio" class="studio-empty">
+          <svg width="72" height="72" viewBox="0 0 36 36" aria-hidden="true"><rect width="36" height="36" rx="10" fill="#5865F2"/></svg>
+          <h2>No accounts yet</h2>
+          <p>Add a Discord token to host live status, DND, streaming, and rich presence.</p>
+          <button class="cta" type="button" id="empty-add" style="max-width:220px;width:100%;margin:16px auto 0">Add account</button>
+        </div>
+        <form id="studio-form" class="hidden" autocomplete="off">
+          <div class="studio-head">
+            <div>
+              <h2 id="studio-title">Account</h2>
+              <span class="host-pill" id="host-pill">Stopped</span>
+            </div>
+            <button class="danger-btn" type="button" id="delete-btn">Delete account</button>
+          </div>
+          <div class="controls">
+            <button class="ctrl start" type="button" id="start-btn">Start</button>
+            <button class="ctrl stop" type="button" id="stop-btn">Stop</button>
+            <button class="ctrl reconnect" type="button" id="reconnect-btn">Reconnect</button>
+          </div>
+          <p class="hint" style="margin-top:-8px">Stop sets Invisible on Discord, then closes the gateway.</p>
+          <section class="group">
+            <h3>Profile</h3>
+            <p class="hint">Name shown in this dashboard. Token is never shown in full after save.</p>
+            <div class="row2">
+              <label class="field"><span>Display name</span><input name="name" placeholder="main"></label>
+              <label class="field"><span>User token</span><input name="token" type="password" autocomplete="off" placeholder="paste to replace"></label>
+            </div>
+            <p class="save-pill" id="token-hint"></p>
+          </section>
+          <section class="group">
+            <h3>Status</h3>
+            <p class="hint">Matches Discord’s status colors: Online, Idle, Do Not Disturb, Invisible, Streaming.</p>
+            <div class="status-grid" id="status-grid" role="radiogroup" aria-label="Status"></div>
+            <input type="hidden" name="status" value="online">
+          </section>
+          <section class="group">
+            <h3>Client</h3>
+            <p class="hint">Mobile shows Discord’s phone icon. Desktop uses the official app identity. Discord can still detect unofficial clients.</p>
+            <div class="chips" id="client-chips" role="radiogroup" aria-label="Client"></div>
+            <input type="hidden" name="client" value="desktop">
+          </section>
+          <section class="group">
+            <h3>Activity</h3>
+            <p class="hint">What others see under your name.</p>
+            <div class="chips" id="type-chips" role="radiogroup" aria-label="Activity type"></div>
+            <input type="hidden" name="activity_type" value="">
+            <div class="row2" style="margin-top:12px">
+              <label class="field" data-show="name"><span id="name-label">Activity name</span><input name="activity_name" placeholder="Visual Studio Code"></label>
+              <label class="field" data-show="url"><span>Stream URL</span><input name="url" placeholder="https://twitch.tv/..."></label>
+              <label class="field" data-show="emoji"><span>Emoji</span><input name="emoji" placeholder="🔥" maxlength="8"></label>
+              <label class="field" data-show="details"><span>Details</span><input name="details" placeholder="Editing index.html"></label>
+              <label class="field" data-show="state"><span>State</span><input name="state" placeholder="Workspace"></label>
+            </div>
+          </section>
+          <section class="group" data-show="rich">
+            <h3>Rich Presence</h3>
+            <p class="hint">Assets, timestamps, and buttons. Large image accepts an https URL for the live preview.</p>
+            <div class="row2">
+              <label class="field"><span>Application ID</span><input name="application_id"></label>
+              <label class="field"><span>Start</span><input name="start" placeholder="now"></label>
+              <label class="field"><span>Large image</span><input name="large_image"></label>
+              <label class="field"><span>Large text</span><input name="large_text"></label>
+              <label class="field"><span>Small image</span><input name="small_image"></label>
+              <label class="field"><span>Small text</span><input name="small_text"></label>
+              <label class="field"><span>Button 1</span><input name="button_1_label" placeholder="label"></label>
+              <label class="field"><span>Button 1 URL</span><input name="button_1_url"></label>
+              <label class="field"><span>Button 2</span><input name="button_2_label" placeholder="label"></label>
+              <label class="field"><span>Button 2 URL</span><input name="button_2_url"></label>
+            </div>
+          </section>
+          <p class="save-pill" id="studio-save"></p>
+          <p id="studio-error" class="err"></p>
+          <div id="unsaved" class="unsaved hidden" role="status">
+            <span>Careful — you have unsaved changes!</span>
+            <div class="unsaved-actions">
+              <button type="button" class="ghost" id="reset-btn">Reset</button>
+              <button type="button" class="save-changes" id="save-btn">Save Changes</button>
+            </div>
+          </div>
+        </form>
+      </main>
+      <aside class="preview-col">
+        <h3>Live preview</h3>
+        <article class="popout" id="dc-popout" data-status="online">
+          <div class="popout-inner">
+            <div class="banner" id="dc-banner"></div>
+            <div class="av-wrap">
+              <div class="av-face" id="dc-avatar">
+                <img id="dc-avatar-img" class="hidden" alt="">
+                <span id="dc-avatar-letter">U</span>
+              </div>
+              <span class="av-status" id="dc-pip"></span>
+            </div>
+            <div class="overlay">
+              <div class="display" id="dc-display">Username</div>
+              <div class="handle" id="dc-handle">waiting</div>
+              <div class="mobile-tag hidden" id="dc-mobile">Mobile</div>
+              <div class="custom hidden" id="dc-custom"><span id="dc-emoji"></span><span id="dc-custom-text"></span></div>
+              <hr class="divider">
+              <section id="dc-activity">
+                <h3 class="sec-label" id="dc-atype">Playing a game</h3>
+                <div class="act">
+                  <div class="art">
+                    <div class="art-lg" id="dc-large"></div>
+                    <div class="art-sm hidden" id="dc-small"></div>
+                  </div>
+                  <div class="act-text">
+                    <div class="act-name" id="dc-aname">Activity</div>
+                    <div class="act-line hidden" id="dc-details"></div>
+                    <div class="act-line hidden" id="dc-state"></div>
+                    <div class="act-line hidden" id="dc-elapsed"></div>
+                  </div>
+                </div>
+                <div class="act-btns">
+                  <button type="button" class="act-btn hidden" id="dc-btn1" tabindex="-1"></button>
+                  <button type="button" class="act-btn hidden" id="dc-btn2" tabindex="-1"></button>
+                </div>
+              </section>
+            </div>
+          </div>
+        </article>
+      </aside>
+    </div>
+  </div>
+
+  <dialog id="add-dlg">
+    <form class="dlg" id="add-form">
+      <h2>Add account</h2>
+      <label class="field"><span>Display name</span><input name="name" placeholder="main" required></label>
+      <label class="field"><span>Discord token</span><input name="token" type="password" autocomplete="off" required></label>
+      <p id="add-error" class="err"></p>
+      <div class="dlg-actions">
+        <button class="ghost" type="button" id="add-cancel">Cancel</button>
+        <button class="cta" type="submit">Add</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="api-dlg" class="wide">
+    <div class="dlg">
+      <h2>DiscordActivity API</h2>
+      <p class="hint">Version v1. The dashboard password is the API key. Keep the gateway socket open with Start so status stays live.</p>
+      <p><code>Authorization: Bearer &lt;DASHBOARD_PASSWORD&gt;</code> · <code>X-API-Key: &lt;DASHBOARD_PASSWORD&gt;</code></p>
+      <pre class="snippet" id="api-curl"></pre>
+      <div class="dlg-actions">
+        <button class="ghost" type="button" id="api-copy">Copy</button>
+        <button class="ghost" type="button" id="api-close">Close</button>
+      </div>
+    </div>
+  </dialog>
+
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+
+  <script>
+    const STATUSES = [
+      { id: "online", label: "Online", hint: "Looks like you’re around", tone: "#23a55a" },
+      { id: "idle", label: "Idle", hint: "Away from keyboard", tone: "#f0b232" },
+      { id: "dnd", label: "Do Not Disturb", hint: "You will not get desktop notifications", tone: "#f23f43" },
+      { id: "invisible", label: "Invisible", hint: "You will appear offline", tone: "#80848e" },
+      { id: "streaming", label: "Streaming", hint: "Purple presence on Twitch", tone: "#593695" }
+    ];
+    const TYPES = [
+      { id: "", label: "None" },
+      { id: "playing", label: "Playing" },
+      { id: "streaming", label: "Streaming" },
+      { id: "listening", label: "Listening" },
+      { id: "watching", label: "Watching" },
+      { id: "custom", label: "Custom" },
+      { id: "competing", label: "Competing" }
+    ];
+    const TITLES = { playing: "Playing a game", streaming: "Streaming on Twitch", listening: "Listening to", watching: "Watching", competing: "Competing in" };
+    const CLIENTS = [
+      { id: "desktop", label: "Desktop" },
+      { id: "mobile", label: "Mobile" }
+    ];
+    const FIELDS = ["name","token","status","client","activity_type","activity_name","url","details","state","application_id","start","large_image","large_text","small_image","small_text","emoji","button_1_label","button_1_url","button_2_label","button_2_url"];
+    const $ = (id) => document.getElementById(id);
+    const loginEl = $("login"), appEl = $("app"), listEl = $("list"), form = $("studio-form");
+    const state = { accounts: [], selected: null, pending: null, poll: 0, elapsed: 0, elapsedOrigin: 0, dirty: false };
+
+    function esc(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[c])); }
+    function toast(kind, title, body) {
+      const el = document.createElement("div");
+      el.className = "toast " + kind;
+      el.innerHTML = `<span class="icon">${kind === "success" ? "✓" : kind === "info" ? "i" : "✕"}</span><div><strong>${esc(title)}</strong>${body ? `<p>${esc(body)}</p>` : ""}</div>`;
+      $("toasts").appendChild(el);
+      setTimeout(() => el.remove(), 4200);
+    }
+    class ApiError extends Error { constructor(m, s) { super(m); this.status = s; } }
+    async function api(path, opts = {}) {
+      const { silent, ...rest } = opts;
+      const res = await fetch(path, Object.assign({ headers: { "Content-Type": "application/json" }, credentials: "same-origin" }, rest));
+      const text = await res.text();
+      const data = text ? JSON.parse(text) : {};
+      if (res.status === 401) throw new ApiError(data.error || "unauthorized", 401);
+      if (!res.ok) {
+        const err = new ApiError(data.error || res.statusText, res.status);
+        if (!silent) toast("error", "Request failed", err.message);
+        throw err;
+      }
+      return data;
+    }
+    function showLogin(err) { stopPoll(); appEl.classList.add("hidden"); loginEl.classList.remove("hidden"); $("login-error").textContent = err || ""; }
+    function showApp() { loginEl.classList.add("hidden"); appEl.classList.remove("hidden"); startPoll(); }
+    function hostState(a) {
+      const rt = a.runtime || {};
+      if (!a.enabled) return "stopped";
+      if (rt.connected) return "live";
+      if (rt.last_error) return "error";
+      return "connecting";
+    }
+    function pipClass(a) {
+      const rt = a.runtime || {};
+      const type = (a.activity_type || "").toLowerCase();
+      if (type === "streaming" || a.status === "streaming") return "streaming";
+      return (rt.status || a.status || "invisible");
+    }
+    function activityLine(a) {
+      const rt = a.runtime || {};
+      if (rt.activity) return rt.activity;
+      const t = a.activity_type, n = a.activity_name;
+      if (!t) return a.status === "streaming" ? "Streaming" : "No activity";
+      if (t === "custom") return [a.emoji, a.state || n].filter(Boolean).join(" ");
+      return (TITLES[t] ? TITLES[t].replace(" a game", "").replace(" on Twitch", "") + " " : t + " ") + (n || "");
+    }
+    function initials(name) { return ((name || "A").trim()[0] || "A").toUpperCase(); }
+
+    function renderRail() {
+      $("account-count").textContent = String(state.accounts.length);
+      if (!state.accounts.length) {
+        listEl.innerHTML = "";
+        $("empty-studio").classList.remove("hidden");
+        form.classList.add("hidden");
+        return;
+      }
+      $("empty-studio").classList.add("hidden");
+      listEl.innerHTML = state.accounts.map(a => {
+        const hs = hostState(a);
+        const sub = hs === "live" ? activityLine(a) : hs === "error" ? ((a.runtime || {}).last_error || "Error") : hs === "connecting" ? "Connecting…" : "Stopped";
+        const pic = a.runtime && a.runtime.avatar_url;
+        const face = pic ? `<img class="avatar-img" src="${esc(pic)}" alt="">` : esc(initials(a.name));
+        return `<button class="account" type="button" data-id="${a.id}" aria-current="${state.selected === a.id ? "true" : "false"}">
+          <span class="avatar" style="background:hsl(${(a.id * 47) % 360} 42% 42%)">${face}<span class="pip ${pipClass(a)}"></span></span>
+          <span class="meta"><span class="name">${esc(a.name || "account " + a.id)}</span><span class="sub">${esc(sub)}</span></span>
+        </button>`;
+      }).join("");
+    }
+    function selected() { return state.accounts.find(a => a.id === state.selected) || null; }
+    function readForm() {
+      const out = {};
+      FIELDS.forEach(k => { out[k] = form.elements[k] ? form.elements[k].value : ""; });
+      out.token = (out.token || "").trim();
+      const acc = selected();
+      if (acc) out.enabled = !!acc.enabled;
+      return out;
+    }
+    function fill(acc) {
+      FIELDS.forEach(k => {
+        if (!form.elements[k]) return;
+        if (k === "token") form.elements[k].value = "";
+        else form.elements[k].value = acc[k] || (k === "status" ? "online" : k === "client" ? "desktop" : "");
+      });
+      $("token-hint").textContent = acc.token_hint ? "Saved token " + acc.token_hint + " · leave empty to keep" : "Paste a token. It is never shown in full after save.";
+      clearDirty();
+      paintStatus();
+      paintClients();
+      paintTypes();
+      reveal();
+      paintPreview();
+      paintHost(acc);
+    }
+    function paintHost(acc) {
+      const hs = hostState(acc);
+      const pill = $("host-pill");
+      pill.className = "host-pill " + (hs === "stopped" ? "" : hs);
+      pill.textContent = hs === "live" ? "Live" : hs === "error" ? "Error" : hs === "connecting" ? "Connecting" : "Stopped";
+      $("studio-title").textContent = acc.name || "Account";
+      $("start-btn").disabled = hs === "live" || hs === "connecting";
+      $("stop-btn").disabled = hs === "stopped";
+      $("reconnect-btn").disabled = hs === "stopped";
+      $("start-btn").innerHTML = hs === "connecting" ? '<span class="spin"></span> Connecting' : "Start";
+    }
+    function paintStatus() {
+      const cur = form.elements.status.value || "online";
+      $("status-grid").innerHTML = STATUSES.map(s => `<button class="status-opt" type="button" role="radio" data-status="${s.id}" aria-checked="${s.id === cur}" style="--tone:${s.tone}">
+        <span class="dot"></span><span class="copy"><b>${s.label}</b><small>${s.hint}</small></span>
+      </button>`).join("");
+    }
+    function paintClients() {
+      const cur = form.elements.client.value || "desktop";
+      $("client-chips").innerHTML = CLIENTS.map(c => `<button class="chip" type="button" role="radio" data-client="${c.id}" aria-checked="${c.id === cur}">${c.label}</button>`).join("");
+    }
+    function paintTypes() {
+      const cur = form.elements.activity_type.value || "";
+      $("type-chips").innerHTML = TYPES.map(t => `<button class="chip" type="button" role="radio" data-type="${t.id}" aria-checked="${t.id === cur}">${t.label}</button>`).join("");
+    }
+    function reveal() {
+      const type = form.elements.activity_type.value || "";
+      const show = {
+        name: ["playing","streaming","listening","watching","competing"].includes(type),
+        url: type === "streaming" || form.elements.status.value === "streaming",
+        emoji: type === "custom",
+        details: ["playing","streaming","listening","watching","competing"].includes(type),
+        state: type !== "",
+        rich: ["playing","streaming","listening","watching","competing"].includes(type)
+      };
+      document.querySelectorAll("[data-show]").forEach(el => {
+        const key = el.getAttribute("data-show");
+        el.classList.toggle("hidden", !show[key]);
+      });
+      $("name-label").textContent = type === "listening" ? "Listening to" : type === "watching" ? "Watching" : type === "competing" ? "Competing in" : type === "streaming" ? "Stream name" : "Activity name";
+    }
+    function isUrl(s) { return /^https?:\/\//i.test(s || ""); }
+    function show(el, on) { el.classList.toggle("hidden", !on); }
+    function pad2(n) { return String(n).padStart(2, "0"); }
+    function fmtElapsed(ms) {
+      const s = Math.max(0, Math.floor(ms / 1000));
+      const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+      return (h ? h + ":" + pad2(m) : pad2(m)) + ":" + pad2(sec) + " elapsed";
+    }
+    function paintPreview() {
+      const d = readForm();
+      const acc = selected() || {};
+      const name = (d.name || acc.name || "Username").trim();
+      const type = (d.activity_type || "").toLowerCase();
+      const streaming = d.status === "streaming" || type === "streaming";
+      const pip = streaming && !["invisible","dnd","idle"].includes(d.status) ? "streaming" : (d.status || "online");
+      $("dc-popout").dataset.status = pip;
+      $("dc-popout").dataset.client = d.client || acc.client || "desktop";
+      const mobile = (d.client || acc.client) === "mobile";
+      show($("dc-mobile"), mobile);
+      $("dc-display").textContent = name;
+      $("dc-handle").textContent = (acc.runtime && acc.runtime.user) ? acc.runtime.user : "@" + name.toLowerCase().replace(/\s+/g, "");
+      const av = acc.runtime && acc.runtime.avatar_url;
+      const img = $("dc-avatar-img"), letter = $("dc-avatar-letter");
+      if (av) { img.src = av; img.classList.remove("hidden"); letter.classList.add("hidden"); }
+      else { img.removeAttribute("src"); img.classList.add("hidden"); letter.classList.remove("hidden"); letter.textContent = initials(name); }
+      const custom = type === "custom";
+      const customText = (d.state || d.activity_name || "").trim();
+      show($("dc-custom"), custom && (customText || d.emoji));
+      $("dc-emoji").textContent = d.emoji || "";
+      $("dc-custom-text").textContent = customText;
+      const on = !custom && (type || streaming);
+      show($("dc-activity"), on);
+      if (on) {
+        const key = streaming && !type ? "streaming" : type || "playing";
+        $("dc-atype").textContent = TITLES[key] || "Playing a game";
+        $("dc-aname").textContent = d.activity_name || (streaming ? "Streaming" : "Activity");
+        show($("dc-details"), !!d.details.trim());
+        $("dc-details").textContent = d.details;
+        show($("dc-state"), !!d.state.trim() && !custom);
+        $("dc-state").textContent = d.state;
+        $("dc-large").style.backgroundImage = isUrl(d.large_image) ? `url("${d.large_image.replace(/"/g, "")}")` : "";
+        show($("dc-small"), !!d.small_image.trim());
+        if (d.small_image.trim()) $("dc-small").style.backgroundImage = isUrl(d.small_image) ? `url("${d.small_image.replace(/"/g, "")}")` : "";
+        const b1 = d.button_1_label.trim() && d.button_1_url.trim();
+        const b2 = d.button_2_label.trim() && d.button_2_url.trim();
+        show($("dc-btn1"), !!b1); $("dc-btn1").textContent = d.button_1_label;
+        show($("dc-btn2"), !!b2); $("dc-btn2").textContent = d.button_2_label;
+      }
+      const raw = (d.start || "").trim();
+      if (on && /^now$/i.test(raw)) {
+        if (!state.elapsedOrigin) state.elapsedOrigin = Date.now();
+        show($("dc-elapsed"), true);
+        const tick = () => { $("dc-elapsed").textContent = fmtElapsed(Date.now() - state.elapsedOrigin); };
+        tick();
+        clearInterval(state.elapsed);
+        state.elapsed = setInterval(tick, 1000);
+      } else {
+        state.elapsedOrigin = 0;
+        clearInterval(state.elapsed);
+        show($("dc-elapsed"), false);
+      }
+    }
+    function markDirty() {
+      state.dirty = true;
+      $("unsaved").classList.remove("hidden");
+      $("studio-error").textContent = "";
+      $("studio-save").textContent = "";
+    }
+    function clearDirty() {
+      state.dirty = false;
+      $("unsaved").classList.add("hidden");
+    }
+    async function flushSave() {
+      if (!state.selected) return;
+      const body = readForm();
+      try {
+        const data = await api("/api/v1/accounts/" + state.selected, { method: "PUT", body: JSON.stringify(body) });
+        mergeAccount(data.account);
+        clearDirty();
+        $("studio-save").textContent = "Saved";
+        $("studio-save").className = "save-pill saved";
+        $("studio-error").textContent = "";
+        paintHost(data.account);
+        renderRail();
+      } catch (err) {
+        $("studio-save").textContent = "";
+        $("studio-error").textContent = err.message;
+      }
+    }
+    function mergeAccount(acc) {
+      if (!acc) return;
+      const i = state.accounts.findIndex(a => a.id === acc.id);
+      if (i >= 0) state.accounts[i] = acc; else state.accounts.push(acc);
+    }
+    async function refresh() {
+      const data = await api("/api/v1/accounts", { silent: true });
+      const keep = state.selected;
+      const focused = document.activeElement && form.contains(document.activeElement);
+      state.accounts = data.accounts || [];
+      if (keep && !state.accounts.some(a => a.id === keep)) state.selected = state.accounts[0] ? state.accounts[0].id : null;
+      else if (!state.selected && state.accounts.length) state.selected = state.accounts[0].id;
+      renderRail();
+      const acc = selected();
+      if (acc && !focused && !state.dirty) { fill(acc); form.classList.remove("hidden"); }
+      else if (acc) { paintHost(acc); paintPreview(); form.classList.remove("hidden"); $("empty-studio").classList.add("hidden"); }
+      else { form.classList.add("hidden"); $("empty-studio").classList.remove("hidden"); }
+    }
+    function startPoll() { stopPoll(); state.poll = setInterval(() => { if (!document.hidden) refresh().catch(err => { if (err.status === 401) showLogin(""); }); }, 2000); }
+    function stopPoll() { clearInterval(state.poll); state.poll = 0; }
+
+    $("status-grid").addEventListener("click", async e => {
+      const btn = e.target.closest("[data-status]"); if (!btn) return;
+      form.elements.status.value = btn.dataset.status;
+      paintStatus(); reveal(); paintPreview();
+      if (!state.selected) return;
+      try {
+        const data = await api("/api/v1/accounts/" + state.selected + "/status", { method: "PUT", body: JSON.stringify({ status: btn.dataset.status }) });
+        if (data.account) { mergeAccount(data.account); paintHost(data.account); renderRail(); }
+      } catch (err) { if (err.status === 401) showLogin(""); }
+    });
+    $("client-chips").addEventListener("click", async e => {
+      const btn = e.target.closest("[data-client]"); if (!btn) return;
+      form.elements.client.value = btn.dataset.client;
+      paintClients(); paintPreview();
+      if (!state.selected) return;
+      try {
+        const data = await api("/api/v1/accounts/" + state.selected, { method: "PATCH", body: JSON.stringify({ client: btn.dataset.client }) });
+        if (data.account) {
+          mergeAccount(data.account);
+          paintHost(data.account);
+          renderRail();
+          if (hostState(data.account) !== "stopped") await control("reconnect");
+        }
+      } catch (err) { if (err.status === 401) showLogin(""); }
+    });
+    $("type-chips").addEventListener("click", e => {
+      const btn = e.target.closest("[data-type]"); if (!btn) return;
+      form.elements.activity_type.value = btn.dataset.type;
+      paintTypes(); reveal(); paintPreview(); markDirty();
+    });
+    form.addEventListener("input", () => { paintPreview(); markDirty(); });
+    $("save-btn").onclick = () => flushSave();
+    $("reset-btn").onclick = () => { const acc = selected(); if (acc) { fill(acc); clearDirty(); } };
+    listEl.addEventListener("click", e => {
+      const btn = e.target.closest("[data-id]"); if (!btn) return;
+      state.selected = Number(btn.dataset.id);
+      const acc = selected();
+      if (acc) { form.classList.remove("hidden"); $("empty-studio").classList.add("hidden"); fill(acc); }
+      renderRail();
+    });
+    async function control(action) {
+      if (!state.selected) return;
+      if (state.dirty) {
+        await flushSave();
+        if (state.dirty) return;
+      }
+      try {
+        const data = await api("/api/v1/accounts/" + state.selected + "/" + action, { method: "POST", body: "{}" });
+        if (data.account) mergeAccount(data.account);
+        toast("info", action === "start" ? "Starting" : action === "stop" ? "Stopped" : "Reconnecting", "Gateway session updated.");
+        await refresh();
+      } catch (err) { if (err.status === 401) showLogin(""); }
+    }
+    $("start-btn").onclick = () => control("start");
+    $("stop-btn").onclick = () => control("stop");
+    $("reconnect-btn").onclick = () => control("reconnect");
+    $("delete-btn").onclick = async () => {
+      if (!state.selected || !confirm("Delete this account?")) return;
+      await api("/api/v1/accounts/" + state.selected, { method: "DELETE" });
+      state.selected = null;
+      await refresh();
+    };
+    function openAdd() { $("add-error").textContent = ""; $("add-form").reset(); $("add-dlg").showModal(); }
+    $("add-btn").onclick = openAdd;
+    $("empty-add").onclick = openAdd;
+    $("add-cancel").onclick = () => $("add-dlg").close();
+    $("add-form").addEventListener("submit", async e => {
+      e.preventDefault();
+      const f = e.target.elements;
+      try {
+        const data = await api("/api/v1/accounts", { method: "POST", body: JSON.stringify({ name: f.name.value, token: f.token.value, status: "online" }) });
+        mergeAccount(data.account);
+        state.selected = data.account.id;
+        $("add-dlg").close();
+        form.classList.remove("hidden");
+        fill(data.account);
+        await refresh();
+      } catch (err) { $("add-error").textContent = err.message; }
+    });
+    $("login-form").addEventListener("submit", async e => {
+      e.preventDefault();
+      $("login-error").textContent = "";
+      try {
+        await api("/login", { method: "POST", silent: true, body: JSON.stringify({ password: $("password").value }) });
+        showApp(); await refresh();
+      } catch (err) { $("login-error").textContent = err.message; }
+    });
+    $("logout-btn").onclick = async () => { await api("/logout", { method: "POST", body: "{}", silent: true }).catch(() => {}); showLogin(""); };
+    $("api-btn").onclick = () => {
+      const id = state.selected || 1;
+      const base = location.origin;
+      $("api-curl").textContent = [
+        `# DiscordActivity HTTP API v1`,
+        `export BASE="${base}"`,
+        `export KEY="$DASHBOARD_PASSWORD"`,
+        `export ID="${id}"`,
+        ``,
+        `# Catalog and enums`,
+        `curl -sS "$BASE/api/v1"`,
+        `curl -sS "$BASE/api/v1/meta"`,
+        `curl -sS "$BASE/health"`,
+        ``,
+        `# Auth: Bearer or X-API-Key (dashboard password)`,
+        `curl -sS "$BASE/api/v1/status" -H "Authorization: Bearer $KEY"`,
+        `curl -sS "$BASE/api/v1/accounts" -H "Authorization: Bearer $KEY"`,
+        `curl -sS "$BASE/api/v1/accounts/$ID" -H "X-API-Key: $KEY"`,
+        ``,
+        `# Status applies immediately (keeps activity)`,
+        `curl -sS -X PUT "$BASE/api/v1/accounts/$ID/status" -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{"status":"dnd"}'`,
+        ``,
+        `# Presence merge`,
+        `curl -sS -X PATCH "$BASE/api/v1/accounts/$ID" -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{"activity_type":"playing","activity_name":"Go"}'`,
+        ``,
+        `# Gateway socket: Start keeps it open; Stop closes it`,
+        `curl -sS -X POST "$BASE/api/v1/accounts/$ID/start" -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{}'`,
+        `curl -sS -X POST "$BASE/api/v1/accounts/$ID/reconnect" -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{}'`,
+        `curl -sS -X POST "$BASE/api/v1/accounts/$ID/stop" -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{}'`
+      ].join("\n");
+      $("api-dlg").showModal();
+    };
+    $("api-close").onclick = () => $("api-dlg").close();
+    $("api-copy").onclick = async () => { await navigator.clipboard.writeText($("api-curl").textContent); toast("success", "Copied", "curl examples copied."); };
+    paintStatus(); paintClients(); paintTypes();
+    (async () => {
+      try {
+        await refresh();
+        showApp();
+      } catch (err) {
+        showLogin(err.status === 401 ? "" : (err.message || ""));
+      }
+    })();
+  </script>
+</body>
+</html>

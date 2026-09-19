@@ -1,0 +1,13 @@
+/discord-activity
+/DiscordActivity
+/discordactivity
+/bin/
+*.exe
+*.test
+*.out
+.DS_Store
+vendor/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+data.sqlite
