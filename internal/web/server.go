@@ -18,9 +18,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/nicolaeser/discord-activity/internal/gateway"
-	"github.com/nicolaeser/discord-activity/internal/host"
-	"github.com/nicolaeser/discord-activity/internal/store"
+	"github.com/nicolaeser/DiscordActivity/internal/gateway"
+	"github.com/nicolaeser/DiscordActivity/internal/host"
+	"github.com/nicolaeser/DiscordActivity/internal/store"
 )
 
 //go:embed static/index.html
@@ -55,6 +55,11 @@ func Start(cfg Config) (*Server, error) {
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/login", s.handleLogin)
 	mux.HandleFunc("/logout", s.handleLogout)
+	mux.HandleFunc("/api/v1/login", s.handleLogin)
+	mux.HandleFunc("/api/v1/logout", s.handleLogout)
+	mux.HandleFunc("/api/v1/status", s.handleStatus)
+	mux.HandleFunc("/api/v1/accounts", s.handleAccounts)
+	mux.HandleFunc("/api/v1/accounts/", s.handleAccount)
 	mux.HandleFunc("/api/accounts", s.handleAccounts)
 	mux.HandleFunc("/api/accounts/", s.handleAccount)
 	mux.HandleFunc("/", s.handleIndex)
@@ -63,13 +68,21 @@ func Start(cfg Config) (*Server, error) {
 		return nil, err
 	}
 	s.addr = ln.Addr().String()
-	s.http = &http.Server{Addr: s.addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	s.http = &http.Server{Addr: s.addr, Handler: s.headers(mux), ReadHeaderTimeout: 5 * time.Second}
 	go func() {
 		if err := s.http.Serve(ln); err != nil && err != http.ErrServerClosed {
 			s.log.Error("http", "error", err)
 		}
 	}()
 	return s, nil
+}
+
+func (s *Server) headers(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("Cache-Control", "no-store")
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) Addr() string { return s.addr }
@@ -122,11 +135,25 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-store")
 	_, _ = w.Write(body)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "service": "DiscordActivity"})
+}
+
+func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+		return
+	}
+	if !s.authed(w, r) {
+		return
+	}
 	accounts := []host.Status{}
 	if s.host != nil {
 		if list := s.host.Health(); list != nil {
@@ -135,7 +162,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	}
 	ok := true
 	for _, a := range accounts {
-		if !a.Connected {
+		if a.Enabled && !a.Connected {
 			ok = false
 			break
 		}
@@ -149,25 +176,23 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
+		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 		return
 	}
 	if s.password == "" {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "DASHBOARD_PASSWORD is not set"})
+		writeError(w, http.StatusServiceUnavailable, "auth_unconfigured", "DASHBOARD_PASSWORD is not set")
 		return
 	}
 	var body struct {
 		Password string `json:"password"`
 	}
 	if err := readJSON(r, &body); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		writeError(w, http.StatusBadRequest, "invalid_json", "invalid json")
 		return
 	}
 	time.Sleep(120 * time.Millisecond)
-	sum := sha256.Sum256([]byte(s.password))
-	got := sha256.Sum256([]byte(body.Password))
-	if subtle.ConstantTimeCompare(sum[:], got[:]) != 1 {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid password"})
+	if !secretEqual(s.password, body.Password) {
+		writeError(w, http.StatusUnauthorized, "invalid_password", "invalid password")
 		return
 	}
 	b := make([]byte, 32)
@@ -199,37 +224,41 @@ func (s *Server) handleAccounts(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		accounts, err := s.store.List()
 		if err != nil {
-			writeJSON(w, 500, map[string]string{"error": err.Error()})
+			writeError(w, http.StatusInternalServerError, "internal", "internal error")
 			return
 		}
 		out := make([]view, 0, len(accounts))
 		for _, a := range accounts {
 			out = append(out, toView(a, s.host.Runtime(a.ID)))
 		}
-		writeJSON(w, 200, map[string]any{"accounts": out})
+		writeJSON(w, http.StatusOK, map[string]any{"accounts": out})
 	case http.MethodPost:
 		var a store.Account
 		if err := readJSON(r, &a); err != nil {
-			writeJSON(w, 400, map[string]string{"error": "invalid json"})
+			writeError(w, http.StatusBadRequest, "invalid_json", "invalid json")
 			return
 		}
 		if strings.TrimSpace(a.Token) == "" {
-			writeJSON(w, 400, map[string]string{"error": "token is required"})
+			writeError(w, http.StatusBadRequest, "token_required", "token is required")
 			return
 		}
 		if _, err := a.Presence(); err != nil {
-			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			writeError(w, http.StatusBadRequest, "invalid_presence", err.Error())
 			return
 		}
 		saved, err := s.store.Insert(a)
 		if err != nil {
-			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			if isUnique(err) {
+				writeError(w, http.StatusConflict, "token_conflict", "token already exists")
+				return
+			}
+			writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
 			return
 		}
 		s.host.Apply(saved)
-		writeJSON(w, 201, map[string]any{"account": toView(saved, s.host.Runtime(saved.ID))})
+		writeJSON(w, http.StatusCreated, map[string]any{"account": toView(saved, s.host.Runtime(saved.ID))})
 	default:
-		w.WriteHeader(http.StatusMethodNotAllowed)
+		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 	}
 }
 
@@ -237,66 +266,122 @@ func (s *Server) handleAccount(w http.ResponseWriter, r *http.Request) {
 	if !s.authed(w, r) {
 		return
 	}
-	parts := strings.Split(strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/accounts/"), "/"), "/")
-	id, err := strconv.ParseInt(parts[0], 10, 64)
-	if err != nil || id <= 0 {
-		writeJSON(w, 400, map[string]string{"error": "invalid id"})
+	id, action, ok := parseAccountPath(r.URL.Path)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid_id", "invalid id")
 		return
 	}
-	if len(parts) == 2 && parts[1] == "reconnect" && r.Method == http.MethodPost {
-		if err := s.host.Restart(id); err != nil {
-			writeJSON(w, 404, map[string]string{"error": err.Error()})
-			return
-		}
-		writeJSON(w, 200, map[string]bool{"ok": true})
-		return
-	}
-	if len(parts) != 1 {
-		http.NotFound(w, r)
+	if action != "" {
+		s.handleControl(w, r, id, action)
 		return
 	}
 	switch r.Method {
 	case http.MethodGet:
 		acc, err := s.store.Get(id)
 		if err != nil {
-			writeJSON(w, 404, map[string]string{"error": err.Error()})
+			writeError(w, http.StatusNotFound, "not_found", "not found")
 			return
 		}
-		writeJSON(w, 200, map[string]any{"account": toView(acc, s.host.Runtime(acc.ID))})
+		writeJSON(w, http.StatusOK, map[string]any{"account": toView(acc, s.host.Runtime(acc.ID))})
 	case http.MethodPut:
 		var a store.Account
 		if err := readJSON(r, &a); err != nil {
-			writeJSON(w, 400, map[string]string{"error": "invalid json"})
+			writeError(w, http.StatusBadRequest, "invalid_json", "invalid json")
 			return
 		}
 		a.ID = id
 		if _, err := a.Presence(); err != nil {
-			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			writeError(w, http.StatusBadRequest, "invalid_presence", err.Error())
 			return
 		}
 		saved, err := s.store.Update(a)
 		if err != nil {
-			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			if isUnique(err) {
+				writeError(w, http.StatusConflict, "token_conflict", "token already exists")
+				return
+			}
+			writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
 			return
 		}
 		s.host.Apply(saved)
-		writeJSON(w, 200, map[string]any{"account": toView(saved, s.host.Runtime(saved.ID))})
+		writeJSON(w, http.StatusOK, map[string]any{"account": toView(saved, s.host.Runtime(saved.ID))})
 	case http.MethodDelete:
 		if err := s.store.Delete(id); err != nil {
-			writeJSON(w, 404, map[string]string{"error": err.Error()})
+			writeError(w, http.StatusNotFound, "not_found", "not found")
 			return
 		}
 		s.host.Stop(id)
-		writeJSON(w, 200, map[string]bool{"ok": true})
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 	default:
-		w.WriteHeader(http.StatusMethodNotAllowed)
+		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 	}
 }
 
+func (s *Server) handleControl(w http.ResponseWriter, r *http.Request, id int64, action string) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+		return
+	}
+	var err error
+	switch action {
+	case "start":
+		err = s.host.Start(id)
+	case "stop":
+		err = s.host.StopAccount(id)
+	case "reconnect":
+		err = s.host.Restart(id)
+	default:
+		writeError(w, http.StatusNotFound, "not_found", "not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusNotFound, "not_found", "not found")
+		return
+	}
+	acc, getErr := s.store.Get(id)
+	if getErr != nil {
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "account": toView(acc, s.host.Runtime(acc.ID))})
+}
+
+func parseAccountPath(path string) (int64, string, bool) {
+	path = strings.TrimPrefix(path, "/api/v1/accounts/")
+	path = strings.TrimPrefix(path, "/api/accounts/")
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) == 0 || parts[0] == "" {
+		return 0, "", false
+	}
+	id, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil || id <= 0 {
+		return 0, "", false
+	}
+	if len(parts) == 1 {
+		return id, "", true
+	}
+	if len(parts) == 2 {
+		return id, parts[1], true
+	}
+	return 0, "", false
+}
+
 func (s *Server) authed(w http.ResponseWriter, r *http.Request) bool {
+	if s.password == "" {
+		writeError(w, http.StatusServiceUnavailable, "auth_unconfigured", "DASHBOARD_PASSWORD is not set")
+		return false
+	}
+	if key, ok := presentedKey(r); ok {
+		if secretEqual(s.password, key) {
+			return true
+		}
+		writeError(w, http.StatusUnauthorized, "unauthorized", "unauthorized")
+		return false
+	}
 	c, err := r.Cookie(cookieName)
 	if err != nil {
-		writeJSON(w, 401, map[string]string{"error": "unauthorized"})
+		w.Header().Set("WWW-Authenticate", `Bearer realm="DiscordActivity"`)
+		writeError(w, http.StatusUnauthorized, "unauthorized", "unauthorized")
 		return false
 	}
 	s.mu.Lock()
@@ -307,10 +392,38 @@ func (s *Server) authed(w http.ResponseWriter, r *http.Request) bool {
 	}
 	s.mu.Unlock()
 	if !ok {
-		writeJSON(w, 401, map[string]string{"error": "unauthorized"})
+		writeError(w, http.StatusUnauthorized, "unauthorized", "unauthorized")
 		return false
 	}
 	return true
+}
+
+func presentedKey(r *http.Request) (string, bool) {
+	if v := strings.TrimSpace(r.Header.Get("X-API-Key")); v != "" {
+		return v, true
+	}
+	const prefix = "Bearer "
+	h := r.Header.Get("Authorization")
+	if len(h) > len(prefix) && strings.EqualFold(h[:len(prefix)], prefix) {
+		if v := strings.TrimSpace(h[len(prefix):]); v != "" {
+			return v, true
+		}
+	}
+	return "", false
+}
+
+func secretEqual(want, got string) bool {
+	sum := sha256.Sum256([]byte(want))
+	have := sha256.Sum256([]byte(got))
+	return subtle.ConstantTimeCompare(sum[:], have[:]) == 1
+}
+
+func isUnique(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "unique") || strings.Contains(msg, "constraint")
 }
 
 type view struct {
@@ -339,4 +452,8 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+func writeError(w http.ResponseWriter, status int, code, message string) {
+	writeJSON(w, status, map[string]string{"error": message, "code": code})
 }

@@ -13,7 +13,7 @@ ARG VERSION=dev
 RUN GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build -trimpath \
       -ldflags "-s -w -X main.version=${VERSION}" \
-      -o /out/discord-activity ./cmd/discord-activity
+      -o /out/discordactivity ./cmd/discordactivity
 
 FROM debian:trixie-slim AS runtime
 RUN apt-get update \
@@ -21,17 +21,17 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/* \
  && groupadd --gid 65532 nonroot \
  && useradd --uid 65532 --gid 65532 --no-create-home --shell /usr/sbin/nologin nonroot \
- && mkdir -p /var/lib/discord-activity \
- && chown 65532:65532 /var/lib/discord-activity
-COPY --from=build /out/discord-activity /usr/local/bin/discord-activity
+ && mkdir -p /var/lib/discordactivity \
+ && chown 65532:65532 /var/lib/discordactivity
+COPY --from=build /out/discordactivity /usr/local/bin/discordactivity
 USER nonroot:nonroot
 EXPOSE 8080
-ENV HEALTH_ADDR=:8080
-ENV SQLITE_PATH=/var/lib/discord-activity/data.sqlite
+ENV PORT=8080
+ENV SQLITE_PATH=/var/lib/discordactivity/data.sqlite
 ENV GOMAXPROCS=2
-LABEL org.opencontainers.image.title="discord-activity"
+LABEL org.opencontainers.image.title="DiscordActivity"
 LABEL org.opencontainers.image.description="Host Discord presence and activities for one or more user tokens."
-LABEL org.opencontainers.image.source="https://github.com/nicolaeser/discord-activity"
+LABEL org.opencontainers.image.source="https://github.com/nicolaeser/DiscordActivity"
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-  CMD ["/usr/local/bin/discord-activity", "-healthcheck"]
-ENTRYPOINT ["/usr/local/bin/discord-activity"]
+  CMD ["/usr/local/bin/discordactivity", "-healthcheck"]
+ENTRYPOINT ["/usr/local/bin/discordactivity"]

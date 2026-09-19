@@ -17,7 +17,7 @@ const (
 )
 
 type Update struct {
-	Since      *int64     `json:"since"`
+	Since      int64      `json:"since"`
 	Activities []Activity `json:"activities"`
 	Status     string     `json:"status"`
 	AFK        bool       `json:"afk"`
@@ -74,10 +74,9 @@ func Build(opts Options) (Update, error) {
 	if err != nil {
 		return Update{}, err
 	}
-	var since *int64
+	var since int64
 	if status == "idle" {
-		ms := now.UnixMilli()
-		since = &ms
+		since = now.UnixMilli()
 	}
 	act, ok, err := buildActivity(opts, stream, now)
 	if err != nil {

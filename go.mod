@@ -1,4 +1,4 @@
-module github.com/nicolaeser/discord-activity
+module github.com/nicolaeser/DiscordActivity
 
 go 1.25.0
 

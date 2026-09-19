@@ -10,10 +10,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/nicolaeser/discord-activity/internal/config"
-	"github.com/nicolaeser/discord-activity/internal/host"
-	"github.com/nicolaeser/discord-activity/internal/store"
-	"github.com/nicolaeser/discord-activity/internal/web"
+	"github.com/nicolaeser/DiscordActivity/internal/config"
+	"github.com/nicolaeser/DiscordActivity/internal/host"
+	"github.com/nicolaeser/DiscordActivity/internal/store"
+	"github.com/nicolaeser/DiscordActivity/internal/web"
 )
 
 var version = "dev"
@@ -22,8 +22,7 @@ func main() {
 	healthcheck := flag.Bool("healthcheck", false, "")
 	flag.Parse()
 	if *healthcheck {
-		addr := strings.TrimSpace(os.Getenv("HEALTH_ADDR"))
-		if err := web.Probe(addr); err != nil {
+		if err := web.Probe(config.Load().Addr); err != nil {
 			os.Exit(1)
 		}
 		return

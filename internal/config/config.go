@@ -14,11 +14,28 @@ type Config struct {
 
 func Load() Config {
 	return Config{
-		Addr:       env("HEALTH_ADDR", ":8080"),
+		Addr:       listenAddr(),
 		LogLevel:   env("LOG_LEVEL", "info"),
 		SQLitePath: env("SQLITE_PATH", "data.sqlite"),
-		Password:   env("DASHBOARD_PASSWORD", env("DASHBOARD_KEY", "")),
+		Password:   firstEnv("DASHBOARD_PASSWORD", "API_KEY", "DASHBOARD_KEY"),
 	}
+}
+
+func listenAddr() string {
+	port := strings.TrimPrefix(env("PORT", "8080"), ":")
+	if port == "" {
+		port = "8080"
+	}
+	return ":" + port
+}
+
+func firstEnv(keys ...string) string {
+	for _, key := range keys {
+		if v := env(key, ""); v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 func env(key, fallback string) string {

@@ -27,3 +27,9 @@ func TestClassifyClose(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestCloseNilConn(t *testing.T) {
+	t.Parallel()
+	s := &Session{}
+	s.Close()
+}

@@ -6,15 +6,17 @@ import (
 	"sync"
 	"time"
 
-	"github.com/nicolaeser/discord-activity/internal/gateway"
-	"github.com/nicolaeser/discord-activity/internal/store"
+	"github.com/nicolaeser/DiscordActivity/internal/gateway"
+	"github.com/nicolaeser/DiscordActivity/internal/store"
 )
 
 type Status struct {
+	ID        int64  `json:"id"`
 	Account   string `json:"account"`
 	User      string `json:"user,omitempty"`
 	Status    string `json:"status"`
 	Activity  string `json:"activity,omitempty"`
+	Enabled   bool   `json:"enabled"`
 	Connected bool   `json:"connected"`
 	LastError string `json:"last_error,omitempty"`
 }
@@ -110,13 +112,37 @@ func (h *Host) Stop(id int64) {
 		return
 	}
 	m.cancel()
+	m.sess.Close()
 	select {
 	case <-m.done:
-	case <-time.After(3 * time.Second):
+	case <-time.After(8 * time.Second):
 	}
 }
 
+func (h *Host) Start(id int64) error {
+	if err := h.store.SetEnabled(id, true); err != nil {
+		return err
+	}
+	acc, err := h.store.Get(id)
+	if err != nil {
+		return err
+	}
+	h.Apply(acc)
+	return nil
+}
+
+func (h *Host) StopAccount(id int64) error {
+	if err := h.store.SetEnabled(id, false); err != nil {
+		return err
+	}
+	h.Stop(id)
+	return nil
+}
+
 func (h *Host) Restart(id int64) error {
+	if err := h.store.SetEnabled(id, true); err != nil {
+		return err
+	}
 	acc, err := h.store.Get(id)
 	if err != nil {
 		return err
@@ -135,10 +161,7 @@ func (h *Host) Health() []Status {
 	defer h.mu.Unlock()
 	var out []Status
 	for _, acc := range accounts {
-		if !acc.Enabled {
-			continue
-		}
-		item := Status{Account: acc.Name, Status: acc.Status}
+		item := Status{ID: acc.ID, Account: acc.Name, Status: acc.Status, Enabled: acc.Enabled}
 		if m, ok := h.sess[acc.ID]; ok {
 			snap := m.sess.Snapshot()
 			item.User, item.Status, item.Activity, item.Connected, item.LastError = snap.User, snap.Status, snap.Activity, snap.Connected, snap.LastError

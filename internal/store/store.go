@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/nicolaeser/discord-activity/internal/presence"
+	"github.com/nicolaeser/DiscordActivity/internal/presence"
 	_ "modernc.org/sqlite"
 )
 
@@ -138,6 +138,22 @@ func (s *Store) Update(a Account) (Account, error) {
 
 func (s *Store) Delete(id int64) error {
 	res, err := s.db.Exec(`DELETE FROM accounts WHERE id=?`, id)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("account %d not found", id)
+	}
+	return nil
+}
+
+func (s *Store) SetEnabled(id int64, enabled bool) error {
+	en := 0
+	if enabled {
+		en = 1
+	}
+	res, err := s.db.Exec(`UPDATE accounts SET enabled=? WHERE id=?`, en, id)
 	if err != nil {
 		return err
 	}

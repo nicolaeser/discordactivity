@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/nicolaeser/discord-activity/internal/presence"
+	"github.com/nicolaeser/DiscordActivity/internal/presence"
 )
 
 const (
@@ -87,7 +87,25 @@ func New(id int64, label, token string, pres presence.Update, log *slog.Logger) 
 	return &Session{id: id, label: label, token: token, presence: pres, log: log.With("account", label)}
 }
 
+func (s *Session) Close() {
+	s.writeMu.Lock()
+	conn := s.conn
+	s.conn = nil
+	s.writeMu.Unlock()
+	if conn == nil {
+		return
+	}
+	_ = conn.SetReadDeadline(time.Now())
+	_ = conn.WriteControl(
+		websocket.CloseMessage,
+		websocket.FormatCloseMessage(4000, "stopped"),
+		time.Now().Add(time.Second),
+	)
+	_ = conn.Close()
+}
+
 func (s *Session) Run(ctx context.Context) {
+	defer s.Close()
 	backoff := time.Second
 	for {
 		if ctx.Err() != nil {
@@ -170,6 +188,8 @@ func (s *Session) connect(ctx context.Context) error {
 		s.writeMu.Unlock()
 		_ = conn.Close()
 	}()
+	stopClose := context.AfterFunc(ctx, s.Close)
+	defer stopClose()
 
 	_ = conn.SetReadDeadline(time.Now().Add(20 * time.Second))
 	hello, err := s.readPayload(conn)
@@ -303,6 +323,7 @@ func (s *Session) heartbeat(ctx context.Context, conn *websocket.Conn, interval 
 	for {
 		select {
 		case <-ctx.Done():
+			_ = conn.Close()
 			return
 		case <-tick.C:
 			if !s.gotAck.Load() {
