@@ -19,6 +19,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/nicolaeser/discordactivity/internal/presence"
+	"github.com/nicolaeser/discordactivity/internal/voice"
 )
 
 const (
@@ -26,6 +27,7 @@ const (
 	opHeartbeat       = 1
 	opIdentify        = 2
 	opPresenceUpdate  = 3
+	opVoiceState      = 4
 	opResume          = 6
 	opReconnect       = 7
 	opInvalidSession  = 9
@@ -46,14 +48,19 @@ var (
 )
 
 type Snapshot struct {
-	ID        int64
-	Label     string
-	User      string
-	AvatarURL string
-	Status    string
-	Activity  string
-	Connected bool
-	LastError string
+	ID             int64
+	Label          string
+	User           string
+	AvatarURL      string
+	Status         string
+	Activity       string
+	Connected      bool
+	LastError      string
+	VoiceEnabled   bool
+	VoiceGuildID   string
+	VoiceChannelID string
+	VoiceConnected bool
+	VoiceError     string
 }
 
 type Session struct {
@@ -62,6 +69,7 @@ type Session struct {
 	token    string
 	client   string
 	presence presence.Update
+	vcfg     voice.Config
 	log      *slog.Logger
 
 	writeMu sync.Mutex
@@ -72,12 +80,18 @@ type Session struct {
 	authFail  atomic.Bool
 	connected atomic.Bool
 
-	mu        sync.Mutex
-	sessionID string
-	resumeURL string
-	user      string
-	avatar    string
-	lastErr   string
+	mu              sync.Mutex
+	sessionID       string
+	resumeURL       string
+	user            string
+	userID          string
+	avatar          string
+	lastErr         string
+	voiceConnected  bool
+	voiceError      string
+	lastVoiceGuild  string
+	resolvedGuild   string
+	resolvedChannel string
 }
 
 type payload struct {
@@ -87,14 +101,15 @@ type payload struct {
 	T  string          `json:"t,omitempty"`
 }
 
-func New(id int64, label, token, client string, pres presence.Update, log *slog.Logger) *Session {
+func New(id int64, label, token, client string, pres presence.Update, vcfg voice.Config, log *slog.Logger) *Session {
 	if log == nil {
 		log = slog.Default()
 	}
 	if client != "mobile" {
 		client = "desktop"
 	}
-	return &Session{id: id, label: label, token: token, client: client, presence: pres, log: log.With("account", label)}
+	vcfg.Normalize()
+	return &Session{id: id, label: label, token: token, client: client, presence: pres, vcfg: vcfg, log: log.With("account", label)}
 }
 
 func (s *Session) Close() {
@@ -155,7 +170,14 @@ func (s *Session) Run(ctx context.Context) {
 func (s *Session) Snapshot() Snapshot {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return Snapshot{ID: s.id, Label: s.label, User: s.user, AvatarURL: s.avatar, Status: s.presence.Status, Activity: s.presence.Label(), Connected: s.connected.Load(), LastError: s.lastErr}
+	return Snapshot{
+		ID: s.id, Label: s.label, User: s.user, AvatarURL: s.avatar,
+		Status: s.presence.Status, Activity: s.presence.Label(),
+		Connected: s.connected.Load(), LastError: s.lastErr,
+		VoiceEnabled: s.vcfg.Enabled, VoiceGuildID: s.vcfg.GuildID,
+		VoiceChannelID: s.vcfg.ChannelID, VoiceConnected: s.voiceConnected,
+		VoiceError: s.voiceError,
+	}
 }
 
 func (s *Session) SetPresence(p presence.Update) {
@@ -183,10 +205,139 @@ func (s *Session) GoInvisible() {
 	conn := s.conn
 	s.writeMu.Unlock()
 	if conn != nil {
+		_ = s.sendVoiceLeave(conn)
 		_ = s.sendPresence(conn)
 	}
 	s.patchSettingsTimeout(1500 * time.Millisecond)
 	time.Sleep(250 * time.Millisecond)
+}
+
+// SetVoice applies a new voice config live: it joins, moves, or leaves the
+// voice channel on the current gateway connection without reconnecting.
+func (s *Session) SetVoice(v voice.Config) {
+	v.Normalize()
+	s.mu.Lock()
+	changed := s.vcfg != v
+	s.vcfg = v
+	if !v.WantJoin() {
+		s.voiceConnected = false
+	}
+	s.mu.Unlock()
+	if !changed {
+		return
+	}
+	s.writeMu.Lock()
+	conn := s.conn
+	s.writeMu.Unlock()
+	if conn == nil {
+		return
+	}
+	if v.WantJoin() {
+		_ = s.sendVoiceJoin(conn)
+	} else {
+		_ = s.sendVoiceLeave(conn)
+	}
+}
+
+// RejoinVoice forces one immediate voice join on the live connection.
+func (s *Session) RejoinVoice() {
+	s.writeMu.Lock()
+	conn := s.conn
+	s.writeMu.Unlock()
+	if conn == nil {
+		return
+	}
+	_ = s.sendVoiceJoin(conn)
+}
+
+// sendVoiceJoin sends op 4 to join the configured channel. It is a no-op
+// when voice is disabled or no channel is configured.
+func (s *Session) sendVoiceJoin(conn *websocket.Conn) error {
+	v := s.currentVoice()
+	if !v.WantJoin() {
+		return nil
+	}
+	guild := v.GuildID
+	if guild == "" {
+		guild = s.resolveVoiceGuild(v.ChannelID)
+	}
+	if guild == "" {
+		s.setVoiceError("voice guild unknown: set guild id or check channel id")
+		return nil
+	}
+	s.mu.Lock()
+	s.lastVoiceGuild = guild
+	s.mu.Unlock()
+	s.log.Info("voice join", "guild", guild, "channel", v.ChannelID)
+	err := s.send(conn, map[string]any{"op": opVoiceState, "d": voice.JoinPayload(guild, v.ChannelID, v.SelfMute, v.SelfDeaf)})
+	if err != nil {
+		s.setVoiceError(err.Error())
+		return err
+	}
+	s.setVoiceError("")
+	return nil
+}
+
+// sendVoiceLeave sends op 4 with a null channel to leave the guild's voice.
+func (s *Session) sendVoiceLeave(conn *websocket.Conn) error {
+	s.mu.Lock()
+	guild := s.vcfg.GuildID
+	if guild == "" {
+		guild = s.resolvedGuild
+	}
+	if guild == "" {
+		guild = s.lastVoiceGuild
+	}
+	s.voiceConnected = false
+	s.mu.Unlock()
+	if guild == "" {
+		return nil
+	}
+	s.log.Info("voice leave", "guild", guild)
+	return s.send(conn, map[string]any{"op": opVoiceState, "d": voice.LeavePayload(guild)})
+}
+
+// resolveVoiceGuild finds the guild that owns a channel via the Discord API
+// and caches it. It returns "" when the channel has no guild (DMs) or the
+// lookup fails; callers surface a voice error instead of failing the session.
+func (s *Session) resolveVoiceGuild(channel string) string {
+	channel = strings.TrimSpace(channel)
+	if channel == "" {
+		return ""
+	}
+	s.mu.Lock()
+	if s.resolvedChannel == channel && s.resolvedGuild != "" {
+		defer s.mu.Unlock()
+		return s.resolvedGuild
+	}
+	s.mu.Unlock()
+	req, err := http.NewRequest(http.MethodGet, "https://discord.com/api/v10/channels/"+channel, nil)
+	if err != nil {
+		return ""
+	}
+	req.Header.Set("Authorization", s.token)
+	req.Header.Set("User-Agent", s.userAgent())
+	req.Header.Set("X-Super-Properties", s.superProperties())
+	client := &http.Client{Timeout: 8 * time.Second}
+	res, err := client.Do(req)
+	if err != nil {
+		s.log.Warn("voice resolve", "error", err)
+		return ""
+	}
+	defer res.Body.Close()
+	var ch struct {
+		GuildID string `json:"guild_id"`
+	}
+	if err := json.NewDecoder(io.LimitReader(res.Body, 64<<10)).Decode(&ch); err != nil {
+		return ""
+	}
+	if !voice.IsSnowflake(ch.GuildID) {
+		return ""
+	}
+	s.mu.Lock()
+	s.resolvedGuild, s.resolvedChannel = ch.GuildID, channel
+	s.mu.Unlock()
+	return ch.GuildID
 }
 
 func (s *Session) connect(ctx context.Context) error {
@@ -212,6 +363,9 @@ func (s *Session) connect(ctx context.Context) error {
 	s.writeMu.Unlock()
 	defer func() {
 		s.connected.Store(false)
+		s.mu.Lock()
+		s.voiceConnected = false
+		s.mu.Unlock()
 		s.writeMu.Lock()
 		if s.conn == conn {
 			s.conn = nil
@@ -322,20 +476,81 @@ func (s *Session) handleDispatch(ctx context.Context, conn *websocket.Conn, p pa
 			user = ready.User.ID
 		}
 		s.mu.Lock()
-		s.sessionID, s.resumeURL, s.user, s.avatar, s.lastErr = ready.SessionID, ready.ResumeGatewayURL, user, avatarURL(ready.User.ID, ready.User.Avatar, ready.User.Discriminator), ""
+		s.sessionID, s.resumeURL, s.user, s.userID, s.avatar, s.lastErr = ready.SessionID, ready.ResumeGatewayURL, user, ready.User.ID, avatarURL(ready.User.ID, ready.User.Avatar, ready.User.Discriminator), ""
 		s.mu.Unlock()
 		s.connected.Store(true)
 		s.log.Info("connected", "user", user)
 		go s.holdPresence(ctx, conn)
+		_ = s.sendVoiceJoin(conn)
 		return nil
 	case "RESUMED":
 		s.connected.Store(true)
 		s.setLastError("")
 		s.patchSettings()
 		_ = s.sendPresence(conn)
+		_ = s.sendVoiceJoin(conn)
+		return nil
+	case "VOICE_STATE_UPDATE":
+		s.handleVoiceState(conn, p.D)
+		return nil
+	case "VOICE_SERVER_UPDATE":
+		var vu struct {
+			GuildID  string `json:"guild_id"`
+			Endpoint string `json:"endpoint"`
+		}
+		_ = json.Unmarshal(p.D, &vu)
+		s.log.Debug("voice server", "guild", vu.GuildID, "endpoint", vu.Endpoint != "")
 		return nil
 	}
 	return nil
+}
+
+// handleVoiceState tracks our own voice membership and rejoins when we get
+// kicked, disconnected, or moved away from the configured channel.
+func (s *Session) handleVoiceState(conn *websocket.Conn, raw json.RawMessage) {
+	var vs struct {
+		UserID    string  `json:"user_id"`
+		GuildID   string  `json:"guild_id"`
+		ChannelID *string `json:"channel_id"`
+	}
+	if err := json.Unmarshal(raw, &vs); err != nil {
+		return
+	}
+	s.mu.Lock()
+	self, want := s.userID, s.vcfg.WantJoin()
+	wantGuild, wantChannel := s.vcfg.GuildID, s.vcfg.ChannelID
+	if wantGuild == "" {
+		wantGuild = s.resolvedGuild
+	}
+	s.mu.Unlock()
+	if self == "" || vs.UserID != self {
+		return
+	}
+	if wantGuild != "" && vs.GuildID != "" && vs.GuildID != wantGuild {
+		return
+	}
+	got := ""
+	if vs.ChannelID != nil {
+		got = *vs.ChannelID
+	}
+	if want && got == wantChannel && wantChannel != "" {
+		s.mu.Lock()
+		s.voiceConnected, s.voiceError = true, ""
+		s.mu.Unlock()
+		return
+	}
+	s.mu.Lock()
+	s.voiceConnected = false
+	s.mu.Unlock()
+	if !want {
+		return
+	}
+	if got == "" {
+		s.log.Warn("voice disconnected, rejoining", "guild", wantGuild, "channel", wantChannel)
+	} else {
+		s.log.Warn("voice moved away, rejoining", "guild", wantGuild, "got", got, "want", wantChannel)
+	}
+	_ = s.sendVoiceJoin(conn)
 }
 
 func (s *Session) holdPresence(ctx context.Context, conn *websocket.Conn) {
@@ -549,6 +764,18 @@ func (s *Session) currentPresence() presence.Update {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.presence
+}
+
+func (s *Session) currentVoice() voice.Config {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.vcfg
+}
+
+func (s *Session) setVoiceError(msg string) {
+	s.mu.Lock()
+	s.voiceError = msg
+	s.mu.Unlock()
 }
 
 func (s *Session) canResume() bool {

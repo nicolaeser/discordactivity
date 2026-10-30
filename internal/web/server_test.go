@@ -121,6 +121,54 @@ func TestCatalogMetaAndStatusPatch(t *testing.T) {
 	}
 }
 
+func TestVoiceEndpoints(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t, "secret")
+	hdr := map[string]string{"Authorization": "Bearer [REDACTED]"}
+	created := e.json(http.MethodPost, "/api/v1/accounts", `{"name":"main","token":"tok-voice-1","status":"online"}`, 201, hdr)
+	id := int(created["account"].(map[string]any)["id"].(float64))
+	path := "/api/v1/accounts/" + strconv.Itoa(id)
+
+	// Join without a channel is rejected.
+	e.status(http.MethodPost, path+"/voice-join", `{}`, 400, hdr)
+
+	// Configure voice via the dedicated endpoint.
+	merged := e.json(http.MethodPut, path+"/voice", `{"voice_guild_id":"111111111111111111","voice_channel_id":"222222222222222222","voice_self_mute":true}`, 200, hdr)
+	acc := merged["account"].(map[string]any)
+	if acc["voice_channel_id"] != "222222222222222222" || acc["voice_self_mute"] != true || acc["voice_enabled"] != false {
+		t.Fatalf("voice merge %+v", acc)
+	}
+	// Bad ids are rejected.
+	e.status(http.MethodPatch, path, `{"voice_channel_id":"abc"}`, 400, hdr)
+
+	// Join persists the toggle; leave clears it.
+	joined := e.json(http.MethodPost, path+"/voice-join", `{}`, 200, hdr)
+	if joined["account"].(map[string]any)["voice_enabled"] != true {
+		t.Fatalf("voice-join %+v", joined)
+	}
+	left := e.json(http.MethodPost, path+"/voice-leave", `{}`, 200, hdr)
+	if left["account"].(map[string]any)["voice_enabled"] != false {
+		t.Fatalf("voice-leave %+v", left)
+	}
+	// Rejoin while the gateway is stopped is a conflict, not a crash.
+	e.status(http.MethodPost, path+"/voice-rejoin", `{}`, 409, hdr)
+}
+
+func TestPutPreservesVoiceToggles(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t, "secret")
+	hdr := map[string]string{"Authorization": "Bearer [REDACTED]"}
+	created := e.json(http.MethodPost, "/api/v1/accounts", `{"name":"main","token":"tok-voice-put","status":"online"}`, 201, hdr)
+	id := int(created["account"].(map[string]any)["id"].(float64))
+	path := "/api/v1/accounts/" + strconv.Itoa(id)
+	e.json(http.MethodPut, path+"/voice", `{"voice_guild_id":"111111111111111111","voice_channel_id":"222222222222222222","voice_enabled":true,"voice_self_mute":true}`, 200, hdr)
+	got := e.json(http.MethodPut, path, `{"name":"main","status":"online","activity_type":"playing","activity_name":"Go"}`, 200, hdr)
+	acc := got["account"].(map[string]any)
+	if acc["voice_enabled"] != true || acc["voice_self_mute"] != true || acc["voice_channel_id"] != "222222222222222222" {
+		t.Fatalf("voice toggles dropped: %+v", acc)
+	}
+}
+
 func TestHealthStaysUpWhenDisconnected(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t, "secret")

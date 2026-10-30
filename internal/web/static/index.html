@@ -219,6 +219,8 @@
     }
     .chip[aria-checked="true"] { background: var(--brand); color: #fff; }
     .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .voice-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 0; }
+    .voice-row > span { font-size: 14px; font-weight: 500; color: var(--header-primary); }
     .save-pill { font-size: 12px; color: var(--text-muted); min-height: 1.2em; }
     .save-pill.saved { color: var(--online); }
     .save-pill.error { color: var(--dnd); }
@@ -469,6 +471,23 @@
               <label class="field"><span>Button 2 URL</span><input name="button_2_url"></label>
             </div>
           </section>
+          <section class="group">
+            <h3>Voice channel</h3>
+            <p class="hint">Join this channel while the account is running. Leave the guild ID empty to resolve it from the channel ID.</p>
+            <label class="field" style="flex-direction:row;align-items:center;gap:10px">
+              <input name="voice_enabled" type="checkbox" style="width:18px;height:18px;margin:0">
+              <span>Stay connected to voice</span>
+            </label>
+            <div class="row2">
+              <label class="field"><span>Guild ID (optional)</span><input name="voice_guild_id" inputmode="numeric" placeholder="Discord server ID"></label>
+              <label class="field"><span>Voice channel ID</span><input name="voice_channel_id" inputmode="numeric" placeholder="Discord voice channel ID"></label>
+            </div>
+            <div class="chips" style="justify-content:flex-start">
+              <label class="chip"><input name="voice_self_mute" type="checkbox" style="width:16px;height:16px;margin:0 6px 0 0"> Self mute</label>
+              <label class="chip"><input name="voice_self_deaf" type="checkbox" style="width:16px;height:16px;margin:0 6px 0 0"> Self deafen</label>
+            </div>
+            <p class="hint" id="voice-state" aria-live="polite"></p>
+          </section>
           <p class="save-pill" id="studio-save"></p>
           <p id="studio-error" class="err"></p>
           <div id="unsaved" class="unsaved hidden" role="status">
@@ -574,7 +593,7 @@
       { id: "desktop", label: "Desktop" },
       { id: "mobile", label: "Mobile" }
     ];
-    const FIELDS = ["name","token","status","client","activity_type","activity_name","url","details","state","application_id","start","large_image","large_text","small_image","small_text","emoji","button_1_label","button_1_url","button_2_label","button_2_url"];
+    const FIELDS = ["name","token","status","client","activity_type","activity_name","url","details","state","application_id","start","large_image","large_text","small_image","small_text","emoji","button_1_label","button_1_url","button_2_label","button_2_url","voice_guild_id","voice_channel_id"];
     const $ = (id) => document.getElementById(id);
     const loginEl = $("login"), appEl = $("app"), listEl = $("list"), form = $("studio-form");
     const state = { accounts: [], selected: null, pending: null, poll: 0, elapsed: 0, elapsedOrigin: 0, dirty: false };
@@ -650,6 +669,7 @@
     function readForm() {
       const out = {};
       FIELDS.forEach(k => { out[k] = form.elements[k] ? form.elements[k].value : ""; });
+      ["voice_enabled","voice_self_mute","voice_self_deaf"].forEach(k => { out[k] = !!form.elements[k].checked; });
       out.token = (out.token || "").trim();
       const acc = selected();
       if (acc) out.enabled = !!acc.enabled;
@@ -661,6 +681,7 @@
         if (k === "token") form.elements[k].value = "";
         else form.elements[k].value = acc[k] || (k === "status" ? "online" : k === "client" ? "desktop" : "");
       });
+      ["voice_enabled","voice_self_mute","voice_self_deaf"].forEach(k => { form.elements[k].checked = !!acc[k]; });
       $("token-hint").textContent = acc.token_hint ? "Saved token " + acc.token_hint + " · leave empty to keep" : "Paste a token. It is never shown in full after save.";
       clearDirty();
       paintStatus();
@@ -669,6 +690,8 @@
       reveal();
       paintPreview();
       paintHost(acc);
+      const rt = acc.runtime || {};
+      $("voice-state").textContent = rt.voice_error || (rt.voice_connected ? "Connected to voice" : acc.voice_enabled ? "Voice join is enabled" : "Not connected");
     }
     function paintHost(acc) {
       const hs = hostState(acc);

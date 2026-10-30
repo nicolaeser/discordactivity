@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/nicolaeser/discordactivity/internal/presence"
+	"github.com/nicolaeser/discordactivity/internal/voice"
 	_ "modernc.org/sqlite"
 )
 
@@ -35,6 +36,11 @@ type Account struct {
 	Button1URL    string `json:"button_1_url"`
 	Button2Label  string `json:"button_2_label"`
 	Button2URL    string `json:"button_2_url"`
+	VoiceGuildID   string `json:"voice_guild_id"`
+	VoiceChannelID string `json:"voice_channel_id"`
+	VoiceEnabled   bool   `json:"voice_enabled"`
+	VoiceSelfMute  bool   `json:"voice_self_mute"`
+	VoiceSelfDeaf  bool   `json:"voice_self_deaf"`
 }
 
 func (a Account) Presence() (presence.Update, error) {
@@ -46,6 +52,16 @@ func (a Account) Presence() (presence.Update, error) {
 		Button1Label: a.Button1Label, Button1URL: a.Button1URL,
 		Button2Label: a.Button2Label, Button2URL: a.Button2URL,
 	})
+}
+
+func (a Account) Voice() voice.Config {
+	return voice.Config{
+		Enabled:   a.VoiceEnabled,
+		GuildID:   strings.TrimSpace(a.VoiceGuildID),
+		ChannelID: strings.TrimSpace(a.VoiceChannelID),
+		SelfMute:  a.VoiceSelfMute,
+		SelfDeaf:  a.VoiceSelfDeaf,
+	}
 }
 
 func (a Account) Public() Account {
@@ -84,6 +100,11 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	_, _ = db.Exec(`ALTER TABLE accounts ADD COLUMN client TEXT NOT NULL DEFAULT 'desktop'`)
+	_, _ = db.Exec(`ALTER TABLE accounts ADD COLUMN voice_guild_id TEXT NOT NULL DEFAULT ''`)
+	_, _ = db.Exec(`ALTER TABLE accounts ADD COLUMN voice_channel_id TEXT NOT NULL DEFAULT ''`)
+	_, _ = db.Exec(`ALTER TABLE accounts ADD COLUMN voice_enabled INTEGER NOT NULL DEFAULT 0`)
+	_, _ = db.Exec(`ALTER TABLE accounts ADD COLUMN voice_self_mute INTEGER NOT NULL DEFAULT 0`)
+	_, _ = db.Exec(`ALTER TABLE accounts ADD COLUMN voice_self_deaf INTEGER NOT NULL DEFAULT 0`)
 	return &Store{db: db}, nil
 }
 
@@ -116,7 +137,7 @@ func (s *Store) Get(id int64) (Account, error) {
 
 func (s *Store) Insert(a Account) (Account, error) {
 	normalize(&a)
-	res, err := s.db.Exec(`INSERT INTO accounts (`+writeCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, args(a)...)
+	res, err := s.db.Exec(`INSERT INTO accounts (`+writeCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, args(a)...)
 	if err != nil {
 		return Account{}, err
 	}
@@ -133,7 +154,7 @@ func (s *Store) Update(a Account) (Account, error) {
 		a.Token = cur.Token
 	}
 	normalize(&a)
-	_, err = s.db.Exec(`UPDATE accounts SET name=?,token=?,enabled=?,status=?,client=?,activity_type=?,activity_name=?,details=?,state=?,url=?,application_id=?,activity_start=?,large_image=?,large_text=?,small_image=?,small_text=?,emoji=?,button_1_label=?,button_1_url=?,button_2_label=?,button_2_url=? WHERE id=?`,
+	_, err = s.db.Exec(`UPDATE accounts SET name=?,token=?,enabled=?,status=?,client=?,activity_type=?,activity_name=?,details=?,state=?,url=?,application_id=?,activity_start=?,large_image=?,large_text=?,small_image=?,small_text=?,emoji=?,button_1_label=?,button_1_url=?,button_2_label=?,button_2_url=?,voice_guild_id=?,voice_channel_id=?,voice_enabled=?,voice_self_mute=?,voice_self_deaf=? WHERE id=?`,
 		append(args(a), a.ID)...)
 	return a, err
 }
@@ -166,8 +187,8 @@ func (s *Store) SetEnabled(id int64, enabled bool) error {
 	return nil
 }
 
-const cols = `id, name, token, enabled, status, client, activity_type, activity_name, details, state, url, application_id, activity_start, large_image, large_text, small_image, small_text, emoji, button_1_label, button_1_url, button_2_label, button_2_url`
-const writeCols = `name, token, enabled, status, client, activity_type, activity_name, details, state, url, application_id, activity_start, large_image, large_text, small_image, small_text, emoji, button_1_label, button_1_url, button_2_label, button_2_url`
+const cols = `id, name, token, enabled, status, client, activity_type, activity_name, details, state, url, application_id, activity_start, large_image, large_text, small_image, small_text, emoji, button_1_label, button_1_url, button_2_label, button_2_url, voice_guild_id, voice_channel_id, voice_enabled, voice_self_mute, voice_self_deaf`
+const writeCols = `name, token, enabled, status, client, activity_type, activity_name, details, state, url, application_id, activity_start, large_image, large_text, small_image, small_text, emoji, button_1_label, button_1_url, button_2_label, button_2_url, voice_guild_id, voice_channel_id, voice_enabled, voice_self_mute, voice_self_deaf`
 
 const schema = `CREATE TABLE IF NOT EXISTS accounts (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -191,16 +212,24 @@ const schema = `CREATE TABLE IF NOT EXISTS accounts (
 	button_1_label TEXT NOT NULL DEFAULT '',
 	button_1_url TEXT NOT NULL DEFAULT '',
 	button_2_label TEXT NOT NULL DEFAULT '',
-	button_2_url TEXT NOT NULL DEFAULT ''
+	button_2_url TEXT NOT NULL DEFAULT '',
+	voice_guild_id TEXT NOT NULL DEFAULT '',
+	voice_channel_id TEXT NOT NULL DEFAULT '',
+	voice_enabled INTEGER NOT NULL DEFAULT 0,
+	voice_self_mute INTEGER NOT NULL DEFAULT 0,
+	voice_self_deaf INTEGER NOT NULL DEFAULT 0
 );`
 
 type scanner interface{ Scan(dest ...any) error }
 
 func scan(row scanner) (Account, error) {
 	var a Account
-	var enabled int
-	err := row.Scan(&a.ID, &a.Name, &a.Token, &enabled, &a.Status, &a.Client, &a.ActivityType, &a.ActivityName, &a.Details, &a.State, &a.URL, &a.ApplicationID, &a.Start, &a.LargeImage, &a.LargeText, &a.SmallImage, &a.SmallText, &a.Emoji, &a.Button1Label, &a.Button1URL, &a.Button2Label, &a.Button2URL)
+	var enabled, voiceEnabled, voiceMute, voiceDeaf int
+	err := row.Scan(&a.ID, &a.Name, &a.Token, &enabled, &a.Status, &a.Client, &a.ActivityType, &a.ActivityName, &a.Details, &a.State, &a.URL, &a.ApplicationID, &a.Start, &a.LargeImage, &a.LargeText, &a.SmallImage, &a.SmallText, &a.Emoji, &a.Button1Label, &a.Button1URL, &a.Button2Label, &a.Button2URL, &a.VoiceGuildID, &a.VoiceChannelID, &voiceEnabled, &voiceMute, &voiceDeaf)
 	a.Enabled = enabled != 0
+	a.VoiceEnabled = voiceEnabled != 0
+	a.VoiceSelfMute = voiceMute != 0
+	a.VoiceSelfDeaf = voiceDeaf != 0
 	return a, err
 }
 
@@ -217,6 +246,8 @@ func normalize(a *Account) {
 	default:
 		a.Client = "desktop"
 	}
+	a.VoiceGuildID = strings.TrimSpace(a.VoiceGuildID)
+	a.VoiceChannelID = strings.TrimSpace(a.VoiceChannelID)
 }
 
 func args(a Account) []any {
@@ -224,5 +255,15 @@ func args(a Account) []any {
 	if a.Enabled {
 		en = 1
 	}
-	return []any{a.Name, a.Token, en, a.Status, a.Client, a.ActivityType, a.ActivityName, a.Details, a.State, a.URL, a.ApplicationID, a.Start, a.LargeImage, a.LargeText, a.SmallImage, a.SmallText, a.Emoji, a.Button1Label, a.Button1URL, a.Button2Label, a.Button2URL}
+	ven, vmute, vdeaf := 0, 0, 0
+	if a.VoiceEnabled {
+		ven = 1
+	}
+	if a.VoiceSelfMute {
+		vmute = 1
+	}
+	if a.VoiceSelfDeaf {
+		vdeaf = 1
+	}
+	return []any{a.Name, a.Token, en, a.Status, a.Client, a.ActivityType, a.ActivityName, a.Details, a.State, a.URL, a.ApplicationID, a.Start, a.LargeImage, a.LargeText, a.SmallImage, a.SmallText, a.Emoji, a.Button1Label, a.Button1URL, a.Button2Label, a.Button2URL, a.VoiceGuildID, a.VoiceChannelID, ven, vmute, vdeaf}
 }

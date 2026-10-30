@@ -251,6 +251,10 @@ func (s *Server) handleAccounts(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "invalid_presence", err.Error())
 			return
 		}
+		if err := a.Voice().Validate(); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_voice", err.Error())
+			return
+		}
 		saved, err := s.store.Insert(a)
 		if err != nil {
 			if isUnique(err) {
@@ -314,8 +318,21 @@ func (s *Server) handleAccount(w http.ResponseWriter, r *http.Request) {
 		if _, ok := keys["enabled"]; !ok {
 			a.Enabled = cur.Enabled
 		}
+		if _, ok := keys["voice_enabled"]; !ok {
+			a.VoiceEnabled = cur.VoiceEnabled
+		}
+		if _, ok := keys["voice_self_mute"]; !ok {
+			a.VoiceSelfMute = cur.VoiceSelfMute
+		}
+		if _, ok := keys["voice_self_deaf"]; !ok {
+			a.VoiceSelfDeaf = cur.VoiceSelfDeaf
+		}
 		if _, err := a.Presence(); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_presence", err.Error())
+			return
+		}
+		if err := a.Voice().Validate(); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_voice", err.Error())
 			return
 		}
 		saved, err := s.store.Update(a)
@@ -374,6 +391,36 @@ func (s *Server) handleControl(w http.ResponseWriter, r *http.Request, id int64,
 			return
 		}
 		s.patchAccount(w, r, id)
+	case "voice":
+		if r.Method != http.MethodPut && r.Method != http.MethodPatch && r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		s.patchAccount(w, r, id)
+	case "voice-join", "voice-leave":
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		if err := s.host.SetVoiceEnabled(id, action == "voice-join"); err != nil {
+			if strings.Contains(strings.ToLower(err.Error()), "not found") {
+				writeError(w, http.StatusNotFound, "not_found", "not found")
+				return
+			}
+			writeError(w, http.StatusBadRequest, "invalid_voice", err.Error())
+			return
+		}
+		s.writeAccount(w, id, true)
+	case "voice-rejoin":
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+			return
+		}
+		if err := s.host.RejoinVoice(id); err != nil {
+			writeError(w, http.StatusConflict, "voice_unavailable", err.Error())
+			return
+		}
+		s.writeAccount(w, id, true)
 	default:
 		writeError(w, http.StatusNotFound, "not_found", "not found")
 	}
@@ -419,6 +466,10 @@ func (s *Server) handleCatalog(w http.ResponseWriter, r *http.Request) {
 			{"method": "POST", "path": "/api/v1/accounts/{id}/start", "auth": "required", "description": "Enable and keep the gateway socket open"},
 			{"method": "POST", "path": "/api/v1/accounts/{id}/stop", "auth": "required", "description": "Disable and close the gateway socket"},
 			{"method": "POST", "path": "/api/v1/accounts/{id}/reconnect", "auth": "required", "description": "Close the live socket and identify again"},
+			{"method": "PUT", "path": "/api/v1/accounts/{id}/voice", "auth": "required", "description": "Merge voice fields (guild/channel id, toggles)"},
+			{"method": "POST", "path": "/api/v1/accounts/{id}/voice-join", "auth": "required", "description": "Enable voice and join the configured channel"},
+			{"method": "POST", "path": "/api/v1/accounts/{id}/voice-leave", "auth": "required", "description": "Disable voice and leave the channel"},
+			{"method": "POST", "path": "/api/v1/accounts/{id}/voice-rejoin", "auth": "required", "description": "Force one immediate voice rejoin"},
 		},
 	})
 }
@@ -481,6 +532,10 @@ func (s *Server) patchAccount(w http.ResponseWriter, r *http.Request, id int64) 
 	}
 	if _, err := acc.Presence(); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_presence", err.Error())
+		return
+	}
+	if err := acc.Voice().Validate(); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_voice", err.Error())
 		return
 	}
 	saved, err := s.store.Update(acc)
@@ -595,16 +650,25 @@ type view struct {
 }
 
 type runtime struct {
-	User      string `json:"user,omitempty"`
-	AvatarURL string `json:"avatar_url,omitempty"`
-	Status    string `json:"status,omitempty"`
-	Activity  string `json:"activity,omitempty"`
-	Connected bool   `json:"connected"`
-	LastError string `json:"last_error,omitempty"`
+	User           string `json:"user,omitempty"`
+	AvatarURL      string `json:"avatar_url,omitempty"`
+	Status         string `json:"status,omitempty"`
+	Activity       string `json:"activity,omitempty"`
+	Connected      bool   `json:"connected"`
+	LastError      string `json:"last_error,omitempty"`
+	VoiceEnabled   bool   `json:"voice_enabled"`
+	VoiceChannelID string `json:"voice_channel_id,omitempty"`
+	VoiceConnected bool   `json:"voice_connected"`
+	VoiceError     string `json:"voice_error,omitempty"`
 }
 
 func toView(a store.Account, snap gateway.Snapshot) view {
-	return view{Account: a.Public(), Runtime: runtime{User: snap.User, AvatarURL: snap.AvatarURL, Status: snap.Status, Activity: snap.Activity, Connected: snap.Connected, LastError: snap.LastError}}
+	return view{Account: a.Public(), Runtime: runtime{
+		User: snap.User, AvatarURL: snap.AvatarURL, Status: snap.Status, Activity: snap.Activity,
+		Connected: snap.Connected, LastError: snap.LastError,
+		VoiceEnabled: snap.VoiceEnabled, VoiceChannelID: snap.VoiceChannelID,
+		VoiceConnected: snap.VoiceConnected, VoiceError: snap.VoiceError,
+	}}
 }
 
 func mergeAccount(acc *store.Account, raw map[string]any) error {
@@ -638,6 +702,8 @@ func mergeAccount(acc *store.Account, raw map[string]any) error {
 	set("button_1_url", &acc.Button1URL)
 	set("button_2_label", &acc.Button2Label)
 	set("button_2_url", &acc.Button2URL)
+	set("voice_guild_id", &acc.VoiceGuildID)
+	set("voice_channel_id", &acc.VoiceChannelID)
 	if v, ok := raw["token"]; ok {
 		if s, ok := v.(string); ok && strings.TrimSpace(s) != "" {
 			acc.Token = s
@@ -646,6 +712,24 @@ func mergeAccount(acc *store.Account, raw map[string]any) error {
 	if v, ok := raw["enabled"]; ok {
 		if b, ok := v.(bool); ok {
 			acc.Enabled = b
+		}
+	}
+	for _, key := range []string{"voice_enabled", "voice_self_mute", "voice_self_deaf"} {
+		v, ok := raw[key]
+		if !ok {
+			continue
+		}
+		b, ok := v.(bool)
+		if !ok {
+			continue
+		}
+		switch key {
+		case "voice_enabled":
+			acc.VoiceEnabled = b
+		case "voice_self_mute":
+			acc.VoiceSelfMute = b
+		case "voice_self_deaf":
+			acc.VoiceSelfDeaf = b
 		}
 	}
 	return nil
