@@ -124,7 +124,7 @@ func TestCatalogMetaAndStatusPatch(t *testing.T) {
 func TestVoiceEndpoints(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t, "secret")
-	hdr := map[string]string{"Authorization": "Bearer [REDACTED]"}
+	hdr := map[string]string{"Authorization": "Bearer secret"}
 	created := e.json(http.MethodPost, "/api/v1/accounts", `{"name":"main","token":"tok-voice-1","status":"online"}`, 201, hdr)
 	id := int(created["account"].(map[string]any)["id"].(float64))
 	path := "/api/v1/accounts/" + strconv.Itoa(id)
@@ -157,7 +157,7 @@ func TestVoiceEndpoints(t *testing.T) {
 func TestPutPreservesVoiceToggles(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t, "secret")
-	hdr := map[string]string{"Authorization": "Bearer [REDACTED]"}
+	hdr := map[string]string{"Authorization": "Bearer secret"}
 	created := e.json(http.MethodPost, "/api/v1/accounts", `{"name":"main","token":"tok-voice-put","status":"online"}`, 201, hdr)
 	id := int(created["account"].(map[string]any)["id"].(float64))
 	path := "/api/v1/accounts/" + strconv.Itoa(id)

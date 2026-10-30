@@ -36,9 +36,9 @@ const (
 	closeAuthFailed   = 4004
 	closeInvalidSeq   = 4007
 	closeSessionTimed = 4009
-	desktopUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) discord/1.0.9208 Chrome/128.0.6613.186 Electron/32.2.7 Safari/537.36"
-	mobileUA  = "Discord/65105 CFNetwork/1494.0.7 Darwin/23.6.0"
-	gatewayURL = "wss://gateway.discord.gg/?v=9&encoding=json"
+	desktopUA         = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) discord/1.0.9208 Chrome/128.0.6613.186 Electron/32.2.7 Safari/537.36"
+	mobileUA          = "Discord/65105 CFNetwork/1494.0.7 Darwin/23.6.0"
+	gatewayURL        = "wss://gateway.discord.gg/?v=9&encoding=json"
 )
 
 var (
@@ -454,7 +454,7 @@ func (s *Session) handleDispatch(ctx context.Context, conn *websocket.Conn, p pa
 		var ready struct {
 			SessionID        string `json:"session_id"`
 			ResumeGatewayURL string `json:"resume_gateway_url"`
-			User struct {
+			User             struct {
 				ID            string `json:"id"`
 				Username      string `json:"username"`
 				Discriminator string `json:"discriminator"`
@@ -626,13 +626,13 @@ func (s *Session) identifyData() map[string]any {
 		"properties":   s.properties(),
 		"presence":     s.currentPresence(),
 		"client_state": map[string]any{
-			"guild_versions":             map[string]int{},
-			"highest_last_message_id":    "0",
-			"read_state_version":         0,
+			"guild_versions":              map[string]int{},
+			"highest_last_message_id":     "0",
+			"read_state_version":          0,
 			"user_guild_settings_version": -1,
-			"user_settings_version":      -1,
-			"private_channels_version":   "0",
-			"api_code_version":           0,
+			"user_settings_version":       -1,
+			"private_channels_version":    "0",
+			"api_code_version":            0,
 		},
 	}
 }

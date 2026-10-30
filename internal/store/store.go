@@ -13,29 +13,29 @@ import (
 )
 
 type Account struct {
-	ID            int64  `json:"id"`
-	Name          string `json:"name"`
-	Token         string `json:"token,omitempty"`
-	TokenHint     string `json:"token_hint,omitempty"`
-	Enabled       bool   `json:"enabled"`
-	Status        string `json:"status"`
-	Client        string `json:"client"`
-	ActivityType  string `json:"activity_type"`
-	ActivityName  string `json:"activity_name"`
-	Details       string `json:"details"`
-	State         string `json:"state"`
-	URL           string `json:"url"`
-	ApplicationID string `json:"application_id"`
-	Start         string `json:"start"`
-	LargeImage    string `json:"large_image"`
-	LargeText     string `json:"large_text"`
-	SmallImage    string `json:"small_image"`
-	SmallText     string `json:"small_text"`
-	Emoji         string `json:"emoji"`
-	Button1Label  string `json:"button_1_label"`
-	Button1URL    string `json:"button_1_url"`
-	Button2Label  string `json:"button_2_label"`
-	Button2URL    string `json:"button_2_url"`
+	ID             int64  `json:"id"`
+	Name           string `json:"name"`
+	Token          string `json:"token,omitempty"`
+	TokenHint      string `json:"token_hint,omitempty"`
+	Enabled        bool   `json:"enabled"`
+	Status         string `json:"status"`
+	Client         string `json:"client"`
+	ActivityType   string `json:"activity_type"`
+	ActivityName   string `json:"activity_name"`
+	Details        string `json:"details"`
+	State          string `json:"state"`
+	URL            string `json:"url"`
+	ApplicationID  string `json:"application_id"`
+	Start          string `json:"start"`
+	LargeImage     string `json:"large_image"`
+	LargeText      string `json:"large_text"`
+	SmallImage     string `json:"small_image"`
+	SmallText      string `json:"small_text"`
+	Emoji          string `json:"emoji"`
+	Button1Label   string `json:"button_1_label"`
+	Button1URL     string `json:"button_1_url"`
+	Button2Label   string `json:"button_2_label"`
+	Button2URL     string `json:"button_2_url"`
 	VoiceGuildID   string `json:"voice_guild_id"`
 	VoiceChannelID string `json:"voice_channel_id"`
 	VoiceEnabled   bool   `json:"voice_enabled"`

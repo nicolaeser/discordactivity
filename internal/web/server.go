@@ -327,6 +327,12 @@ func (s *Server) handleAccount(w http.ResponseWriter, r *http.Request) {
 		if _, ok := keys["voice_self_deaf"]; !ok {
 			a.VoiceSelfDeaf = cur.VoiceSelfDeaf
 		}
+		if _, ok := keys["voice_guild_id"]; !ok {
+			a.VoiceGuildID = cur.VoiceGuildID
+		}
+		if _, ok := keys["voice_channel_id"]; !ok {
+			a.VoiceChannelID = cur.VoiceChannelID
+		}
 		if _, err := a.Presence(); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_presence", err.Error())
 			return
@@ -480,8 +486,8 @@ func (s *Server) handleMeta(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"ok": true,
-		"statuses": []string{"online", "idle", "dnd", "invisible", "streaming"},
+		"ok":             true,
+		"statuses":       []string{"online", "idle", "dnd", "invisible", "streaming"},
 		"activity_types": []string{"", "playing", "streaming", "listening", "watching", "custom", "competing"},
 		"clients":        []string{"desktop", "mobile"},
 		"start":          []string{"now", "unix", "RFC3339"},
